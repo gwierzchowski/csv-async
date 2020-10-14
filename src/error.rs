@@ -4,7 +4,6 @@ use std::io;
 use std::result;
 
 use crate::byte_record::{ByteRecord, Position};
-use crate::deserializer::DeserializeError;
 
 /// A type alias for `Result<T, csv::Error>`.
 pub type Result<T> = result::Result<T, Error>;
@@ -88,16 +87,6 @@ pub enum ErrorKind {
     /// are called on a CSV reader that was asked to `seek` before it parsed
     /// the first record.
     Seek,
-    /// An error of this kind occurs only when using the Serde serializer.
-    Serialize(String),
-    /// An error of this kind occurs only when performing automatic
-    /// deserialization with serde.
-    Deserialize {
-        /// The position of this error, if available.
-        pos: Option<Position>,
-        /// The deserialization error.
-        err: DeserializeError,
-    },
     /// Hints that destructuring should not be exhaustive.
     ///
     /// This enum may grow additional variants, so this makes sure clients
@@ -116,7 +105,6 @@ impl ErrorKind {
         match *self {
             ErrorKind::Utf8 { ref pos, .. } => pos.as_ref(),
             ErrorKind::UnequalLengths { ref pos, .. } => pos.as_ref(),
-            ErrorKind::Deserialize { ref pos, .. } => pos.as_ref(),
             _ => None,
         }
     }
@@ -141,8 +129,6 @@ impl StdError for Error {
             ErrorKind::Utf8 { ref err, .. } => Some(err),
             ErrorKind::UnequalLengths { .. } => None,
             ErrorKind::Seek => None,
-            ErrorKind::Serialize(_) => None,
-            ErrorKind::Deserialize { ref err, .. } => Some(err),
             _ => unreachable!(),
         }
     }
@@ -194,21 +180,6 @@ impl fmt::Display for Error {
                 "CSV error: cannot access headers of CSV data \
                  when the parser was seeked before the first record \
                  could be read"
-            ),
-            ErrorKind::Serialize(ref err) => {
-                write!(f, "CSV write error: {}", err)
-            }
-            ErrorKind::Deserialize { pos: None, ref err } => {
-                write!(f, "CSV deserialize error: {}", err)
-            }
-            ErrorKind::Deserialize { pos: Some(ref pos), ref err } => write!(
-                f,
-                "CSV deserialize error: record {} \
-                 (line: {}, byte: {}): {}",
-                pos.record(),
-                pos.line(),
-                pos.byte(),
-                err
             ),
             _ => unreachable!(),
         }
@@ -314,6 +285,7 @@ impl<W> IntoInnerError<W> {
     ///
     /// (This is a visibility hack. It's public in this module, but not in the
     /// crate.)
+    #[allow(dead_code)]
     pub(crate) fn new(wtr: W, err: io::Error) -> IntoInnerError<W> {
         IntoInnerError { wtr: wtr, err: err }
     }

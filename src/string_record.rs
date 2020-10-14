@@ -1,19 +1,13 @@
 use std::fmt;
-use std::io;
 use std::iter::FromIterator;
 use std::ops::{self, Range};
 use std::result;
 use std::str;
 
-use serde::de::Deserialize;
-
-use bytes::Bytes;
-use futures::stream::Stream;
+use futures::io;
 
 use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
-use crate::deserializer::deserialize_string_record;
 use crate::error::{Error, ErrorKind, FromUtf8Error, Result};
-// use crate::reader::Reader;
 
 use crate::async_reader::AsyncReader;
 
@@ -209,98 +203,6 @@ impl StringRecord {
         str_record
     }
 
-    /// Deserialize this record.
-    ///
-    /// The `D` type parameter refers to the type that this record should be
-    /// deserialized into. The `'de` lifetime refers to the lifetime of the
-    /// `StringRecord`. The `'de` lifetime permits deserializing into structs
-    /// that borrow field data from this record.
-    ///
-    /// An optional `headers` parameter permits deserializing into a struct
-    /// based on its field names (corresponding to header values) rather than
-    /// the order in which the fields are defined.
-    ///
-    /// # Example: without headers
-    ///
-    /// This shows how to deserialize a single row into a struct based on the
-    /// order in which fields occur. This example also shows how to borrow
-    /// fields from the `StringRecord`, which results in zero allocation
-    /// deserialization.
-    ///
-    /// ```
-    /// use std::error::Error;
-    ///
-    /// use csv_async::StringRecord;
-    /// use serde::Deserialize;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct Row<'a> {
-    ///     city: &'a str,
-    ///     country: &'a str,
-    ///     population: u64,
-    /// }
-    ///
-    /// # fn main() { example().unwrap() }
-    /// fn example() -> Result<(), Box<dyn Error>> {
-    ///     let record = StringRecord::from(vec![
-    ///         "Boston", "United States", "4628910",
-    ///     ]);
-    ///
-    ///     let row: Row = record.deserialize(None)?;
-    ///     assert_eq!(row.city, "Boston");
-    ///     assert_eq!(row.country, "United States");
-    ///     assert_eq!(row.population, 4628910);
-    ///     Ok(())
-    /// }
-    /// ```
-    ///
-    /// # Example: with headers
-    ///
-    /// This example is like the previous one, but shows how to deserialize
-    /// into a struct based on the struct's field names. For this to work,
-    /// you must provide a header row.
-    ///
-    /// This example also shows that you can deserialize into owned data
-    /// types (e.g., `String`) instead of borrowed data types (e.g., `&str`).
-    ///
-    /// ```
-    /// use std::error::Error;
-    ///
-    /// use csv_async::StringRecord;
-    /// use serde::Deserialize;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct Row {
-    ///     city: String,
-    ///     country: String,
-    ///     population: u64,
-    /// }
-    ///
-    /// # fn main() { example().unwrap() }
-    /// fn example() -> Result<(), Box<dyn Error>> {
-    ///     // Notice that the fields are not in the same order
-    ///     // as the fields in the struct!
-    ///     let header = StringRecord::from(vec![
-    ///         "country", "city", "population",
-    ///     ]);
-    ///     let record = StringRecord::from(vec![
-    ///         "United States", "Boston", "4628910",
-    ///     ]);
-    ///
-    ///     let row: Row = record.deserialize(Some(&header))?;
-    ///     assert_eq!(row.city, "Boston");
-    ///     assert_eq!(row.country, "United States");
-    ///     assert_eq!(row.population, 4628910);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn deserialize<'de, D: Deserialize<'de>>(
-        &'de self,
-        headers: Option<&'de StringRecord>,
-    ) -> Result<D> {
-        deserialize_string_record(self, headers)
-    }
-
     /// Returns an iterator over all fields in this record.
     ///
     /// # Example
@@ -467,7 +369,6 @@ impl StringRecord {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
     /// use futures::stream::{self, StreamExt};
     /// use csv_async::{StringRecord, AsyncReaderBuilder};
     ///
@@ -476,16 +377,8 @@ impl StringRecord {
     ///     let mut record = StringRecord::new();
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .has_headers(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         "a,b,c\nx,y,z".as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
+    ///         .from_reader("a,b,c\nx,y,z".as_bytes()
     ///         );
-    ///
     ///     assert!(rdr.read_record(&mut record).await?);
     ///     {
     ///         let pos = record.position().expect("a record position");
@@ -625,50 +518,14 @@ impl StringRecord {
         self.0
     }
 
-    /*
-    /// A safe function for reading CSV data into a `StringRecord`.
-    ///
-    /// This relies on the internal representation of `StringRecord`.
-    #[inline(always)]
-    pub(crate) fn read<R: io::Read>(
-        &mut self,
-        rdr: &mut Reader<R>,
-    ) -> Result<bool> {
-        // SAFETY: This code is critical to upholding the safety of other code
-        // blocks in this module. Namely, after calling `read_byte_record`,
-        // it is possible for `record` to contain invalid UTF-8. We check for
-        // this in the `validate` method, and if it does have invalid UTF-8, we
-        // clear the record. (It is bad for `record` to contain invalid UTF-8
-        // because other accessor methods, like `get`, assume that every field
-        // is valid UTF-8.)
-        let pos = rdr.position().clone();
-        let read_res = rdr.read_byte_record(&mut self.0);
-        let utf8_res = match self.0.validate() {
-            Ok(()) => Ok(()),
-            Err(err) => {
-                // If this record isn't valid UTF-8, then completely wipe it.
-                self.0.clear();
-                Err(err)
-            }
-        };
-        match (read_res, utf8_res) {
-            (Err(err), _) => Err(err),
-            (Ok(_), Err(err)) => {
-                Err(Error::new(ErrorKind::Utf8 { pos: Some(pos), err: err }))
-            }
-            (Ok(eof), Ok(())) => Ok(eof),
-        }
-    }
-    */
     
     /// A safe function for reading CSV data into a `StringRecord`.
     ///
     /// This relies on the internal representation of `StringRecord`.
-    pub(crate) async fn read_async<
-        S: Stream<Item = io::Result<Bytes>> + Unpin,
-    >(
+    #[inline(always)]
+    pub(crate) async fn read<R: io::AsyncRead + std::marker::Unpin>(
         &mut self,
-        rdr: &mut AsyncReader<S>,
+        rdr: &mut AsyncReader<R>,
     ) -> Result<bool> {
         // SAFETY: This code is critical to upholding the safety of other code
         // blocks in this module. Namely, after calling `read_byte_record`,

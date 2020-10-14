@@ -5,10 +5,8 @@ use std::ops::{self, Range};
 use std::result;
 
 use bstr::{BString, ByteSlice};
-use serde::de::Deserialize;
 
-use crate::deserializer::deserialize_byte_record;
-use crate::error::{new_utf8_error, Result, Utf8Error};
+use crate::error::{new_utf8_error, Utf8Error};
 use crate::string_record::StringRecord;
 
 /// A single CSV record stored as raw bytes.
@@ -139,98 +137,6 @@ impl ByteRecord {
             fields: vec![0; buffer],
             bounds: Bounds::with_capacity(fields),
         }))
-    }
-
-    /// Deserialize this record.
-    ///
-    /// The `D` type parameter refers to the type that this record should be
-    /// deserialized into. The `'de` lifetime refers to the lifetime of the
-    /// `ByteRecord`. The `'de` lifetime permits deserializing into structs
-    /// that borrow field data from this record.
-    ///
-    /// An optional `headers` parameter permits deserializing into a struct
-    /// based on its field names (corresponding to header values) rather than
-    /// the order in which the fields are defined.
-    ///
-    /// # Example: without headers
-    ///
-    /// This shows how to deserialize a single row into a struct based on the
-    /// order in which fields occur. This example also shows how to borrow
-    /// fields from the `ByteRecord`, which results in zero allocation
-    /// deserialization.
-    ///
-    /// ```
-    /// use std::error::Error;
-    ///
-    /// use csv_async::ByteRecord;
-    /// use serde::Deserialize;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct Row<'a> {
-    ///     city: &'a str,
-    ///     country: &'a str,
-    ///     population: u64,
-    /// }
-    ///
-    /// # fn main() { example().unwrap() }
-    /// fn example() -> Result<(), Box<dyn Error>> {
-    ///     let record = ByteRecord::from(vec![
-    ///         "Boston", "United States", "4628910",
-    ///     ]);
-    ///
-    ///     let row: Row = record.deserialize(None)?;
-    ///     assert_eq!(row.city, "Boston");
-    ///     assert_eq!(row.country, "United States");
-    ///     assert_eq!(row.population, 4628910);
-    ///     Ok(())
-    /// }
-    /// ```
-    ///
-    /// # Example: with headers
-    ///
-    /// This example is like the previous one, but shows how to deserialize
-    /// into a struct based on the struct's field names. For this to work,
-    /// you must provide a header row.
-    ///
-    /// This example also shows that you can deserialize into owned data
-    /// types (e.g., `String`) instead of borrowed data types (e.g., `&str`).
-    ///
-    /// ```
-    /// use std::error::Error;
-    ///
-    /// use csv_async::ByteRecord;
-    /// use serde::Deserialize;
-    ///
-    /// #[derive(Deserialize)]
-    /// struct Row {
-    ///     city: String,
-    ///     country: String,
-    ///     population: u64,
-    /// }
-    ///
-    /// # fn main() { example().unwrap() }
-    /// fn example() -> Result<(), Box<dyn Error>> {
-    ///     // Notice that the fields are not in the same order
-    ///     // as the fields in the struct!
-    ///     let header = ByteRecord::from(vec![
-    ///         "country", "city", "population",
-    ///     ]);
-    ///     let record = ByteRecord::from(vec![
-    ///         "United States", "Boston", "4628910",
-    ///     ]);
-    ///
-    ///     let row: Row = record.deserialize(Some(&header))?;
-    ///     assert_eq!(row.city, "Boston");
-    ///     assert_eq!(row.country, "United States");
-    ///     assert_eq!(row.population, 4628910);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn deserialize<'de, D: Deserialize<'de>>(
-        &'de self,
-        headers: Option<&'de ByteRecord>,
-    ) -> Result<D> {
-        deserialize_byte_record(self, headers)
     }
 
     /// Returns an iterator over all fields in this record.
@@ -403,7 +309,6 @@ impl ByteRecord {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
     /// use futures::stream::{self, StreamExt};
     /// use csv_async::{ByteRecord, AsyncReaderBuilder};
     ///
@@ -412,18 +317,7 @@ impl ByteRecord {
     ///     let mut record = ByteRecord::new();
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .has_headers(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         "a,b,c\nx,y,z".as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    // /     let mut rdr = AsyncReaderBuilder::new()
-    // /         .has_headers(false)
-    // /         .from_reader("a,b,c\nx,y,z".as_bytes());
+    ///         .from_reader("a,b,c\nx,y,z".as_bytes());
     ///
     ///     assert!(rdr.read_byte_record(&mut record).await?);
     ///     {

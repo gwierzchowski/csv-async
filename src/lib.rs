@@ -1,32 +1,35 @@
-/*!
-The `csv` crate provides a fast and flexible CSV reader and writer, with
-support for Serde.
+#![deny(missing_docs)]
 
-The [tutorial](tutorial/index.html) is a good place to start if you're new to
+/*!
+The `csv-async` crate provides a fast and flexible CSV reader and writer, 
+which is intended to be run in asynchronous environment - i.e.
+inside functions with `async` attribute called by tasks run by executor.
+This library does not imply using any particular executor (is executor agnostic).
+Unit tests and documentation snippets uses `async-std` crate.
+Synchronous interface for reading and writing CSV files is not contained in this crate,
+please use `csv` crate for this. This crate attempts to closely mimic `csv` crate API.
+
+TODO: The [tutorial](tutorial/index.html) is a good place to start if you're new to
 Rust.
 
-The [cookbook](cookbook/index.html) will give you a variety of complete Rust
+TODO: The [cookbook](cookbook/index.html) will give you a variety of complete Rust
 programs that do CSV reading and writing.
 
 # Brief overview
 
-**If you're new to Rust**, you might find the
-[tutorial](tutorial/index.html)
-to be a good place to start.
-
 The primary types in this crate are
-[`Reader`](struct.Reader.html)
+[`AsyncReader`](struct.AsyncReader.html)
 and
 [`Writer`](struct.Writer.html),
 for reading and writing CSV data respectively.
 Correspondingly, to support CSV data with custom field or record delimiters
 (among many other things), you should use either a
-[`ReaderBuilder`](struct.ReaderBuilder.html)
+[`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html)
 or a
 [`WriterBuilder`](struct.WriterBuilder.html),
 depending on whether you're reading or writing CSV data.
 
-Unless you're using Serde, the standard CSV record types are
+The standard CSV record types are
 [`StringRecord`](struct.StringRecord.html)
 and
 [`ByteRecord`](struct.ByteRecord.html).
@@ -46,33 +49,27 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-csv = "1.1"
-```
-
-If you want to use Serde's custom derive functionality on your custom structs,
-then add this to your `[dependencies]` section of `Cargo.toml`:
-
-```toml
-[dependencies]
-serde = { version = "1", features = ["derive"] }
+csv-async = "0.0.2"
 ```
 
 # Example
 
-This example shows how to read CSV data from stdin and print each record to
+This example shows how to read CSV file in asynchronous context and print each record to
 stdout.
 
 There are more examples in the [cookbook](cookbook/index.html).
 
 ```no_run
 use std::error::Error;
-use std::io;
 use std::process;
+use async_std::io;
+use futures::stream::StreamExt;
 
-fn example() -> Result<(), Box<dyn Error>> {
+async fn example() -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
-    let mut rdr = csv::Reader::from_reader(io::stdin());
-    for result in rdr.records() {
+    let mut rdr = csv_async::AsyncReader::from_reader(io::stdin());
+    let mut records = rdr.into_records();
+    while let Some(result) = records.next().await {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
         let record = result?;
@@ -82,87 +79,59 @@ fn example() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    if let Err(err) = example() {
-        println!("error running example: {}", err);
-        process::exit(1);
-    }
+    async_std::task::block_on(async {
+        if let Err(err) = example().await {
+            println!("error running example: {}", err);
+            process::exit(1);
+        }
+    });
 }
 ```
 
 The above example can be run like so:
 
 ```ignore
-$ git clone git://github.com/BurntSushi/rust-csv
-$ cd rust-csv
+$ git clone https://github.com/gwierzchowski/csv-async.git
+$ cd csv-async
 $ cargo run --example cookbook-read-basic < examples/data/smallpop.csv
 ```
-
-# Example with Serde
-
-This example shows how to read CSV data from stdin into your own custom struct.
-By default, the member names of the struct are matched with the values in the
-header record of your CSV data.
-
-```no_run
-use std::error::Error;
-use std::io;
-use std::process;
-
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct Record {
-    city: String,
-    region: String,
-    country: String,
-    population: Option<u64>,
-}
-
-fn example() -> Result<(), Box<dyn Error>> {
-    let mut rdr = csv::Reader::from_reader(io::stdin());
-    for result in rdr.deserialize() {
-        // Notice that we need to provide a type hint for automatic
-        // deserialization.
-        let record: Record = result?;
-        println!("{:?}", record);
-    }
-    Ok(())
-}
-
-fn main() {
-    if let Err(err) = example() {
-        println!("error running example: {}", err);
-        process::exit(1);
-    }
-}
-```
-
-The above example can be run like so:
-
-```ignore
-$ git clone git://github.com/BurntSushi/rust-csv
-$ cd rust-csv
-$ cargo run --example cookbook-read-serde < examples/data/smallpop.csv
-```
-
 */
 
-// #![deny(missing_docs)]
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::process;
+    use futures::stream::StreamExt;
+    use async_std::fs::File;
+    
+    async fn example() -> Result<(), Box<dyn Error>> {
+        // Build the CSV reader and iterate over each record.
+        let mut rdr = crate::AsyncReader::from_reader(
+            File::open("examples/data/smallpop.csv").await?
+        );
+        let mut records = rdr.records();
+        while let Some(record) = records.next().await {
+            println!("{:?}", record?);
+        }
+        Ok(())
+    }
 
-use std::result;
+    #[test]
+    fn test1() {
+        async_std::task::block_on(async {
+            if let Err(err) = example().await {
+                println!("error running example: {}", err);
+                process::exit(1);
+            }
+        });
+    }
+}
 
-use serde::{Deserialize, Deserializer};
 
 pub use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
-// pub use crate::deserializer::{DeserializeError, DeserializeErrorKind};
 pub use crate::error::{
     Error, ErrorKind, FromUtf8Error, IntoInnerError, Result, Utf8Error,
 };
-// pub use crate::reader::{
-//     ByteRecordsIntoIter, ByteRecordsIter, DeserializeRecordsIntoIter,
-//     DeserializeRecordsIter, Reader, ReaderBuilder, StringRecordsIntoIter,
-//     StringRecordsIter,
-// };
 pub use crate::string_record::{StringRecord, StringRecordIter};
 // pub use crate::writer::{Writer, WriterBuilder};
 
@@ -173,10 +142,7 @@ pub use crate::async_reader::{
 
 mod byte_record;
 // pub mod cookbook;
-mod deserializer;
 mod error;
-// // mod reader;
-// mod serializer;
 mod string_record;
 // pub mod tutorial;
 // mod writer;
@@ -212,6 +178,7 @@ pub enum QuoteStyle {
 }
 
 impl QuoteStyle {
+    #[allow(dead_code)]
     fn to_core(self) -> csv_core::QuoteStyle {
         match self {
             QuoteStyle::Always => csv_core::QuoteStyle::Always,
@@ -301,76 +268,3 @@ impl Default for Trim {
     }
 }
 
-/// A custom Serde deserializer for possibly invalid `Option<T>` fields.
-///
-/// When deserializing CSV data, it is sometimes desirable to simply ignore
-/// fields with invalid data. For example, there might be a field that is
-/// usually a number, but will occasionally contain garbage data that causes
-/// number parsing to fail.
-///
-/// You might be inclined to use, say, `Option<i32>` for fields such at this.
-/// By default, however, `Option<i32>` will either capture *empty* fields with
-/// `None` or valid numeric fields with `Some(the_number)`. If the field is
-/// non-empty and not a valid number, then deserialization will return an error
-/// instead of using `None`.
-///
-/// This function allows you to override this default behavior. Namely, if
-/// `Option<T>` is deserialized with non-empty but invalid data, then the value
-/// will be `None` and the error will be ignored.
-///
-/// # Example
-///
-/// This example shows how to parse CSV records with numerical data, even if
-/// some numerical data is absent or invalid. Without the
-/// `serde(deserialize_with = "...")` annotations, this example would return
-/// an error.
-///
-/// ```
-/// use std::error::Error;
-///
-/// use bytes::Bytes;
-/// use futures::stream::{self, StreamExt};
-/// use csv_async::AsyncReader;
-/// use serde::Deserialize;
-///
-/// #[derive(Debug, Deserialize, Eq, PartialEq)]
-/// struct Row {
-///     #[serde(deserialize_with = "csv_async::invalid_option")]
-///     a: Option<i32>,
-///     #[serde(deserialize_with = "csv_async::invalid_option")]
-///     b: Option<i32>,
-///     #[serde(deserialize_with = "csv_async::invalid_option")]
-///     c: Option<i32>,
-/// }
-///
-/// # fn main() { example().unwrap(); }
-/// fn example() -> Result<(), Box<dyn Error>> {
-///     let data = "\
-/// a,b,c
-/// 5,\"\",xyz
-/// ";
-///     let mut rdr = AsyncReader::from_bytes_stream(
-///         stream::iter(
-///             std::iter::once(
-///                 Ok(Bytes::from_static(
-///                     data.as_bytes()
-///                 ))
-///             )
-///         )
-///     );
-///     if let Some(result) = rdr.deserialize().next() {
-///         let record: Row = result?;
-///         assert_eq!(record, Row { a: Some(5), b: None, c: None });
-///         Ok(())
-///     } else {
-///         Err(From::from("expected at least one record but got none"))
-///     }
-/// }
-/// ```
-pub fn invalid_option<'de, D, T>(de: D) -> result::Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    Option<T>: Deserialize<'de>,
-{
-    Option::<T>::deserialize(de).or_else(|_| Ok(None))
-}

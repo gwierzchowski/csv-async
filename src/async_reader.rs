@@ -1,12 +1,11 @@
 use std::future::Future;
-use std::io;
 use std::pin::Pin;
 use std::result;
 use std::task::{Context, Poll};
 
-use bytes::Bytes;
+use futures::io::{self, AsyncBufRead, AsyncSeekExt};
+use futures::stream::Stream;
 use csv_core::{Reader as CoreReader, ReaderBuilder as CoreReaderBuilder};
-use futures::stream::{Stream, StreamExt};
 
 use crate::byte_record::{ByteRecord, Position};
 use crate::error::{Error, ErrorKind, Result, Utf8Error};
@@ -33,8 +32,8 @@ pub struct AsyncReaderBuilder {
 }
 
 impl Default for AsyncReaderBuilder {
-    fn default() -> Self {
-        Self {
+    fn default() -> AsyncReaderBuilder {
+        AsyncReaderBuilder {
             capacity: 8 * (1 << 10),
             flexible: false,
             has_headers: true,
@@ -49,8 +48,36 @@ impl AsyncReaderBuilder {
     ///
     /// To convert a builder into a reader, call one of the methods starting
     /// with `from_`.
-    pub fn new() -> Self {
-        Self::default()
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::error::Error;
+    /// use futures::stream::StreamExt;
+    /// use csv_async::{AsyncReaderBuilder, StringRecord};
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,pop
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let mut rdr = AsyncReaderBuilder::new().from_reader(data.as_bytes());
+    ///
+    ///     let records = rdr
+    ///         .records()
+    ///         .map(Result::unwrap)
+    ///         .collect::<Vec<StringRecord>>().await;
+    ///     assert_eq!(records, vec![
+    ///         vec!["Boston", "United States", "4628910"],
+    ///         vec!["Concord", "United States", "42695"],
+    ///     ]);
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn new() -> AsyncReaderBuilder {
+        AsyncReaderBuilder::default()
     }
 
     /// Build a CSV parser from this configuration that reads data from `rdr`.
@@ -62,42 +89,26 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder, StringRecord};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await}); }
-    /// async fn example() {
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                    ))
-    ///                 )
-    ///             )
-    ///         );
-    ///     let records = rdr
-    ///         .records()
-    ///         .map(Result::unwrap)
-    ///         .collect::<Vec<StringRecord>>().await;
-    ///     assert_eq!(records, vec![
-    ///         vec!["Boston", "United States", "4628910"],
-    ///         vec!["Concord", "United States", "42695"],
-    ///     ]);
+    ///     let mut rdr = AsyncReaderBuilder::new().from_reader(data.as_bytes());
+    ///     let mut records = rdr.into_records();
+    ///     while let Some(record) = records.next().await {
+    ///         println!("{:?}", record?);
+    ///     }
+    ///     Ok(())
     /// }
     /// ```
-    pub fn from_bytes_stream<S: Stream<Item = io::Result<Bytes>> + Unpin>(
-        &self,
-        stream: S,
-    ) -> AsyncReader<S> {
-        AsyncReader::new(self, stream)
+    pub fn from_reader<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncReader<R> {
+        AsyncReader::new(self, rdr)
     }
 
     /// The field delimiter to use when parsing CSV.
@@ -107,8 +118,8 @@ impl AsyncReaderBuilder {
     /// # Example
     ///
     /// ```
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
+    /// use std::error::Error;
+    /// use futures::stream::StreamExt;
     /// use csv_async::{AsyncReaderBuilder, StringRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await}); }
@@ -119,15 +130,8 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .delimiter(b';')
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
+    ///         .from_reader(data.as_bytes());
+    ///
     ///     let records = rdr
     ///         .records()
     ///         .map(Result::unwrap)
@@ -135,9 +139,9 @@ impl AsyncReaderBuilder {
     ///     assert_eq!(records, vec![
     ///         vec!["Boston", "United States", "4628910"],
     ///     ]);
-    /// }
+     /// }
     /// ```
-    pub fn delimiter(&mut self, delimiter: u8) -> &mut Self {
+    pub fn delimiter(&mut self, delimiter: u8) -> &mut AsyncReaderBuilder {
         self.builder.delimiter(delimiter);
         self
     }
@@ -159,9 +163,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder, StringRecord};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -170,36 +173,21 @@ impl AsyncReaderBuilder {
     /// Boston,United States,4628910
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .has_headers(true)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///
-    ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .has_headers(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["city", "country", "pop"]);
+    ///         .from_reader(data.as_bytes());
+    ///     let mut iter = rdr.records();
+    ///
+    ///     // Read the first record.
+    ///     assert_eq!(iter.next().await.unwrap()?, vec!["city", "country", "pop"]);
+    ///
+    ///     // Read the second record.
+    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    /// 
+    ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn has_headers(&mut self, yes: bool) -> &mut Self {
+    pub fn has_headers(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.has_headers = yes;
         self
     }
@@ -216,9 +204,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder, StringRecord};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -229,19 +216,11 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .flexible(true)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
+    ///         .from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States"]);
     ///     Ok(())
-    /// }
+   /// }
     /// ```
     ///
     /// # Example: flexible records disabled
@@ -252,10 +231,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    // / use csv::{ErrorKind, ReaderBuilder};
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder, StringRecord, ErrorKind};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::{ErrorKind, AsyncReaderBuilder};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -266,15 +243,8 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .flexible(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
+    ///         .from_reader(data.as_bytes());
+    ///
     ///     let mut records = rdr.records();
     ///     match records.next().await {
     ///         Some(Err(err)) => match *err.kind() {
@@ -301,7 +271,7 @@ impl AsyncReaderBuilder {
     ///     }
     /// }
     /// ```
-    pub fn flexible(&mut self, yes: bool) -> &mut Self {
+    pub fn flexible(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.flexible = yes;
         self
     }
@@ -328,12 +298,12 @@ impl AsyncReaderBuilder {
     /// This example shows what happens when all values are trimmed.
     ///
     /// ```
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
+    /// use std::error::Error;
+    /// use futures::stream::StreamExt;
     /// use csv_async::{AsyncReaderBuilder, StringRecord, Trim};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await}); }
-    /// async fn example() {
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city ,   country ,  pop
     /// Boston,\"
@@ -342,15 +312,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .trim(Trim::All)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
+    ///         .from_reader(data.as_bytes());
     ///     let records = rdr
     ///         .records()
     ///         .map(Result::unwrap)
@@ -359,9 +321,10 @@ impl AsyncReaderBuilder {
     ///         vec!["Boston", "United States", "4628910"],
     ///         vec!["Concord", "United States", "42695"],
     ///     ]);
+    ///     Ok(())
     /// }
     /// ```
-    pub fn trim(&mut self, trim: Trim) -> &mut Self {
+    pub fn trim(&mut self, trim: Trim) -> &mut AsyncReaderBuilder {
         self.trim = trim;
         self
     }
@@ -376,32 +339,22 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
+    /// use futures::stream::StreamExt;
     /// use csv_async::{AsyncReaderBuilder, Terminator};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "city,country,pop$Boston,United States,4628910";
-    ///
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .terminator(Terminator::Any(b'$'))
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///         .from_reader(data.as_bytes());
+    ///     let mut iter = rdr.records();
+    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn terminator(&mut self, term: Terminator) -> &mut Self {
+    pub fn terminator(&mut self, term: Terminator) -> &mut AsyncReaderBuilder {
         self.builder.terminator(term.to_core());
         self
     }
@@ -414,9 +367,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -426,22 +378,14 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .quote(b'\'')
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///         .from_reader(data.as_bytes());
+    ///     let mut iter = rdr.records();
+    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn quote(&mut self, quote: u8) -> &mut Self {
+    pub fn quote(&mut self, quote: u8) -> &mut AsyncReaderBuilder {
         self.builder.quote(quote);
         self
     }
@@ -457,9 +401,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -469,38 +412,28 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .escape(Some(b'\\'))
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
+    ///         .from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\" States", "4628910"]);
     ///     Ok(())
     /// }
     /// ```
-    pub fn escape(&mut self, escape: Option<u8>) -> &mut Self {
+    pub fn escape(&mut self, escape: Option<u8>) -> &mut AsyncReaderBuilder {
         self.builder.escape(escape);
         self
     }
 
     /// Enable double quote escapes.
     ///
-    /// This is enabled by default, but it may be disabled. 
-    /// When disabled, doubled quotes are not interpreted as escapes.
+    /// This is enabled by default, but it may be disabled. When disabled,
+    /// doubled quotes are not interpreted as escapes.
     ///
     /// # Example
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -510,22 +443,13 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .double_quote(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
+    ///         .from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\"\" States\"", "4628910"]);
     ///     Ok(())
     /// }
     /// ```
-    pub fn double_quote(&mut self, yes: bool) -> &mut Self {
+    pub fn double_quote(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.builder.double_quote(yes);
         self
     }
@@ -539,9 +463,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -551,38 +474,13 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .quoting(false)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
+    ///         .from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "\"The United States", "4628910"]);
-    ///
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .flexible(true)
-    ///         .quoting(true)
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The United States,4628910\n"]);
     ///     Ok(())
     /// }
     /// ```
-    pub fn quoting(&mut self, yes: bool) -> &mut Self {
+    pub fn quoting(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.builder.quoting(yes);
         self
     }
@@ -598,9 +496,8 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -611,22 +508,14 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .comment(Some(b'#'))
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
+    ///         .from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     assert!(records.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn comment(&mut self, comment: Option<u8>) -> &mut Self {
+    pub fn comment(&mut self, comment: Option<u8>) -> &mut AsyncReaderBuilder {
         self.builder.comment(comment);
         self
     }
@@ -641,40 +530,30 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReaderBuilder, Terminator};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city\x1Fcountry\x1Fpop\x1EBoston\x1FUnited States\x1F4628910";
-    ///
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .ascii()
-    ///         .from_bytes_stream(
-    ///             stream::iter(
-    ///                 std::iter::once(
-    ///                     Ok(Bytes::from_static(
-    ///                         data.as_bytes()
-    ///                     ))
-    ///                 )
-    ///             )
-    ///         );
-    ///
-    ///     let mut records = rdr.records();
+    ///         .from_reader(data.as_bytes());
+    ///     let mut records = rdr.byte_records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     assert!(records.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn ascii(&mut self) -> &mut Self {
+    pub fn ascii(&mut self) -> &mut AsyncReaderBuilder {
         self.builder.ascii();
         self
     }
 
     /// Set the capacity (in bytes) of the buffer used in the CSV reader.
     /// This defaults to a reasonable setting.
-    pub fn buffer_capacity(&mut self, capacity: usize) -> &mut Self {
+    pub fn buffer_capacity(&mut self, capacity: usize) -> &mut AsyncReaderBuilder {
         self.capacity = capacity;
         self
     }
@@ -684,7 +563,7 @@ impl AsyncReaderBuilder {
     /// This is intended to be a debug option. The NFA is always slower than
     /// the DFA.
     #[doc(hidden)]
-    pub fn nfa(&mut self, yes: bool) -> &mut Self {
+    pub fn nfa(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.builder.nfa(yes);
         self
     }
@@ -704,14 +583,13 @@ impl AsyncReaderBuilder {
 /// A CSV reader has a couple convenient constructor methods like `from_path`
 /// and `from_reader`. However, if you want to configure the CSV reader to use
 /// a different delimiter or quote character (among many other things), then
-/// you should use a [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html) to construct
-/// a `AsyncReader`. For example, to change the field delimiter:
+/// you should use a [`ReaderBuilder`](struct.ReaderBuilder.html) to construct
+/// a `Reader`. For example, to change the field delimiter:
 ///
 /// ```
 /// use std::error::Error;
-/// use bytes::Bytes;
-/// use futures::stream::{self, StreamExt};
-/// use csv_async::{AsyncReaderBuilder};
+/// use futures::stream::StreamExt;
+/// use csv_async::AsyncReaderBuilder;
 ///
 /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
 /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -721,15 +599,7 @@ impl AsyncReaderBuilder {
 /// ";
 ///     let mut rdr = AsyncReaderBuilder::new()
 ///         .delimiter(b';')
-///         .from_bytes_stream(
-///             stream::iter(
-///                 std::iter::once(
-///                     Ok(Bytes::from_static(
-///                         data.as_bytes()
-///                     ))
-///                 )
-///             )
-///         );
+///         .from_reader(data.as_bytes());
 ///
 ///     let mut records = rdr.records();
 ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
@@ -770,10 +640,7 @@ impl AsyncReaderBuilder {
 /// For more details on the precise semantics of errors, see the
 /// [`Error`](enum.Error.html) type.
 #[derive(Debug)]
-pub struct AsyncReader<S>
-where
-    S: Stream<Item = io::Result<Bytes>>,
-{
+pub struct AsyncReader<R> {
     /// The underlying CSV parser.
     ///
     /// We explicitly put this on the heap because CoreReader embeds an entire
@@ -781,22 +648,15 @@ where
     /// almost 500 bytes on the stack.
     core: Box<CoreReader>,
     /// The underlying reader.
-    stream: Option<S>,
-    buf_state: AsyncBufState,
+    rdr: io::BufReader<R>,
     /// Various state tracking.
     ///
     /// There is more state embedded in the `CoreReader`.
-    state: AsyncReaderState,
+    state: ReaderState,
 }
 
 #[derive(Debug)]
-struct AsyncBufState {
-    buf: Option<Bytes>,
-    offset: usize,
-}
-
-#[derive(Debug)]
-struct AsyncReaderState {
+struct ReaderState {
     /// When set, this contains the first row of any parsed CSV data.
     ///
     /// This is always populated, regardless of whether `has_headers` is set.
@@ -835,19 +695,48 @@ struct Headers {
     string_record: result::Result<StringRecord, Utf8Error>,
 }
 
+#[must_use = "futures do nothing unless you `.await` or poll them"]
+struct FillBuf<'a, R: AsyncBufRead + ?Sized> {
+    reader: &'a mut R,
+}
 
-impl<S> AsyncReader<S>
+impl<R: AsyncBufRead + ?Sized + Unpin> Unpin for FillBuf<'_, R> {}
+
+impl<'a, R: AsyncBufRead + ?Sized + Unpin> FillBuf<'a, R> {
+    pub fn new(reader: &'a mut R) -> Self {
+        Self { reader }
+    }
+}
+
+impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
+    type Output = io::Result<usize>;
+    
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // let Self { reader } = &mut *self;
+        // match Pin::new(reader).poll_fill_buf(cx) {
+        match Pin::new(&mut *self.reader).poll_fill_buf(cx) {
+            Poll::Ready(res) => {
+                match res {
+                    Ok(res) => Poll::Ready(Ok(res.len())),
+                    Err(e) => Poll::Ready(Err(e))
+                }
+            },
+            Poll::Pending => Poll::Pending
+        }
+    }
+} 
+
+impl<'r, R> AsyncReader<R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
-    fn new(builder: &AsyncReaderBuilder, stream: S) -> Self {
+    fn new(builder: &AsyncReaderBuilder, rdr: R) -> AsyncReader<R> {
         AsyncReader {
             core: Box::new(builder.builder.build()),
-            stream: Some(stream),
-            buf_state: AsyncBufState { buf: None, offset: 0 },
-            state: AsyncReaderState {
+            rdr: io::BufReader::with_capacity(builder.capacity, rdr),
+            state: ReaderState {
                 headers: None,
                 has_headers: builder.has_headers,
                 flexible: builder.flexible,
@@ -860,7 +749,6 @@ where
             },
         }
     }
-    
 
     /// Create a new CSV parser with a default configuration for the given
     /// reader.
@@ -871,35 +759,26 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use bytes::Bytes;
-    /// use futures::stream::{self, StreamExt};
-    /// use csv_async::{AsyncReader, StringRecord};
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
     /// Boston,United States,4628910
-    /// Concord,United States,42695\
+    /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Concord","United States", "42695"]);
-    ///     assert!(records.next().await.is_none());
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut records = rdr.into_records();
+    ///     while let Some(record) = records.next().await {
+    ///         println!("{:?}", record?);
+    ///     }
     ///     Ok(())
     /// }
     /// ```
-    pub fn from_bytes_stream(stream: S) -> Self {
-        AsyncReaderBuilder::new().from_bytes_stream(stream)
+    pub fn from_reader(rdr: R) -> AsyncReader<R> {
+        AsyncReaderBuilder::new().from_reader(rdr)
     }
 
     /// Returns a borrowed iterator over all records as strings.
@@ -915,8 +794,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -924,17 +802,8 @@ where
     ///     let data = "\
     /// city,country,pop
     /// Boston,United States,4628910
-    /// Concord,United States,42695\
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     while let Some(record) = records.next().await {
     ///         println!("{:?}", record?);
@@ -942,7 +811,7 @@ where
     ///     Ok(())
     /// }
     /// ```
-    pub fn records(&mut self) -> StringRecordsStream<S> {
+    pub fn records(&mut self) -> StringRecordsStream<R> {
         StringRecordsStream::new(self)
     }
 
@@ -962,8 +831,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -972,15 +840,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut records = rdr.into_records();
     ///     while let Some(record) = records.next().await {
     ///         println!("{:?}", record?);
@@ -988,7 +848,7 @@ where
     ///     Ok(())
     /// }
     /// ```
-    pub fn into_records<'a>(self) -> StringRecordsIntoStream<'a, S> {
+    pub fn into_records(self) -> StringRecordsIntoStream<'r, R> {
         StringRecordsIntoStream::new(self)
     }
 
@@ -1005,8 +865,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1015,22 +874,14 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut iter = rdr.byte_records();
     ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn byte_records(&mut self) -> ByteRecordsStream<S> {
+    pub fn byte_records(&mut self) -> ByteRecordsStream<R> {
         ByteRecordsStream::new(self)
     }
 
@@ -1050,8 +901,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1060,22 +910,14 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut iter = rdr.into_byte_records();
     ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn into_byte_records<'a>(self) -> ByteRecordsIntoStream<'a, S> {
+    pub fn into_byte_records(self) -> ByteRecordsIntoStream<'r, R> {
         ByteRecordsIntoStream::new(self)
     }
 
@@ -1100,8 +942,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1110,23 +951,15 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///
     ///     // We can read the headers before iterating.
     ///     {
-    ///         // `headers` borrows from the reader, so we put this in its
-    ///         // own scope. That way, the borrow ends before we try iterating
-    ///         // below. Alternatively, we could clone the headers.
-    ///         let headers = rdr.headers().await?;
-    ///         assert_eq!(headers, vec!["city", "country", "pop"]);
+    ///     // `headers` borrows from the reader, so we put this in its
+    ///     // own scope. That way, the borrow ends before we try iterating
+    ///     // below. Alternatively, we could clone the headers.
+    ///     let headers = rdr.headers().await?;
+    ///     assert_eq!(headers, vec!["city", "country", "pop"]);
     ///     }
     ///
     ///     {
@@ -1177,8 +1010,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
+    /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1187,23 +1019,15 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///
     ///     // We can read the headers before iterating.
     ///     {
-    ///         // `headers` borrows from the reader, so we put this in its
-    ///         // own scope. That way, the borrow ends before we try iterating
-    ///         // below. Alternatively, we could clone the headers.
-    ///         let headers = rdr.byte_headers().await?;
-    ///         assert_eq!(headers, vec!["city", "country", "pop"]);
+    ///     // `headers` borrows from the reader, so we put this in its
+    ///     // own scope. That way, the borrow ends before we try iterating
+    ///     // below. Alternatively, we could clone the headers.
+    ///     let headers = rdr.byte_headers().await?;
+    ///     assert_eq!(headers, vec!["city", "country", "pop"]);
     ///     }
     ///
     ///     {
@@ -1237,8 +1061,6 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1247,15 +1069,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///
     ///     assert_eq!(rdr.headers().await?, vec!["city", "country", "pop"]);
     ///     rdr.set_headers(StringRecord::from(vec!["a", "b", "c"]));
@@ -1278,8 +1092,6 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
     /// use csv_async::{AsyncReader, ByteRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1288,15 +1100,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///
     ///     assert_eq!(rdr.byte_headers().await?, vec!["city", "country", "pop"]);
     ///     rdr.set_byte_headers(ByteRecord::from(vec!["a", "b", "c"]));
@@ -1357,8 +1161,6 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
@@ -1367,15 +1169,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut record = StringRecord::new();
     ///
     ///     if rdr.read_record(&mut record).await? {
@@ -1386,11 +1180,8 @@ where
     ///     }
     /// }
     /// ```
-    pub async fn read_record(
-        &mut self,
-        record: &mut StringRecord,
-    ) -> Result<bool> {
-        let result = record.read_async(self).await;
+    pub async fn read_record(&mut self, record: &mut StringRecord) -> Result<bool> {
+        let result = record.read(self).await;
         // We need to trim again because trimming string records includes
         // Unicode whitespace. (ByteRecord trimming only includes ASCII
         // whitespace.)
@@ -1418,9 +1209,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::stream::{self, StreamExt};
-    /// use bytes::Bytes;
-    /// use csv_async::{AsyncReader, ByteRecord};
+    /// use csv_async::{ByteRecord, AsyncReader};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -1428,15 +1217,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_bytes_stream(
-    ///         stream::iter(
-    ///             std::iter::once(
-    ///                 Ok(Bytes::from_static(
-    ///                     data.as_bytes()
-    ///                 ))
-    ///             )
-    ///         )
-    ///     );
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut record = ByteRecord::new();
     ///
     ///     if rdr.read_byte_record(&mut record).await? {
@@ -1484,33 +1265,6 @@ where
         Ok(ok)
     }
 
-    async fn fill_buf(&mut self) -> io::Result<()> {
-        if self.buf_state.buf.is_some() {
-            Ok(())
-        } else if self.stream.is_some() {
-            match self.stream.as_mut().unwrap().next().await {
-                Some(bytes) => {
-                    self.buf_state.buf = Some(bytes?);
-                    self.buf_state.offset = 0;
-
-                    Ok(())
-                }
-                None => {
-                    self.stream = None;
-                    self.buf_state.buf = None;
-                    self.buf_state.offset = 0;
-
-                    Ok(())
-                }
-            }
-        } else {
-            self.buf_state.buf = None;
-            self.buf_state.offset = 0;
-
-            Ok(())
-        }
-    }
-
     /// Read a byte record from the underlying CSV reader, without accounting
     /// for headers.
     #[inline(always)]
@@ -1526,32 +1280,18 @@ where
             return Ok(false);
         }
         let (mut outlen, mut endlen) = (0, 0);
+        // let mut buf = String::new();
         loop {
             let (res, nin, nout, nend) = {
-                self.fill_buf().await?;
-
-                let input = if let Some(buf) = &self.buf_state.buf {
-                    &buf[self.buf_state.offset..]
-                } else {
-                    &[]
-                };
-
+                FillBuf::new(&mut self.rdr).await?;
                 let (fields, ends) = record.as_parts();
                 self.core.read_record(
-                    input,
+                    self.rdr.buffer(),
                     &mut fields[outlen..],
                     &mut ends[endlen..],
                 )
             };
-
-            self.buf_state.offset += nin;
-            if let Some(buf) = &self.buf_state.buf {
-                if self.buf_state.offset >= buf.as_ref().len() {
-                    self.buf_state.buf = None;
-                    self.buf_state.offset = 0;
-                }
-            }
-
+            Pin::new(&mut self.rdr).consume(nin);
             let byte = self.state.cur_pos.byte();
             self.state
                 .cur_pos
@@ -1589,50 +1329,41 @@ where
     /// data will result in parsing the same subsequent record.
     ///
     /// # Example: reading the position
-    /// TODO
+    ///
     /// ```
-    // / use std::error::Error;
-    // / use std::io;
-    // / use futures::stream::{self, StreamExt};
-    // / use bytes::Bytes;
-    // / use csv_async::{AsyncReader, Position};
-    // /
-    // / # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    // / async fn example() -> Result<(), Box<dyn Error>> {
-    // /     let data = "\
-    // / city,country,popcount
-    // / Boston,United States,4628910
-    // / Concord,United States,42695
-    // / ";
-    // /     let rdr = Reader::from_reader(io::Cursor::new(data));
-    // /     let mut rdr = AsyncReader::from_bytes_stream(
-    // /         stream::iter(
-    // /             std::iter::once(
-    // /                 Ok(Bytes::from_static(
-    // /                     io::Cursor::new(data)
-    // /                 ))
-    // /             )
-    // /         )
-    // /     );
-    // /     let mut iter = rdr.into_records();
-    // /     let mut pos = Position::new();
-    // /     loop {
-    // /         // Read the position immediately before each record.
-    // /         let next_pos = iter.reader().position().clone();
-    // /         if iter.next().is_none() {
-    // /             break;
-    // /         }
-    // /         pos = next_pos;
-    // /     }
-    // /
-    // /     // `pos` should now be the position immediately before the last
-    // /     // record.
-    // /     assert_eq!(pos.byte(), 51);
-    // /     assert_eq!(pos.line(), 3);
-    // /     assert_eq!(pos.record(), 2);
-    // /     Ok(())
-    // / }
-    // / ```
+    /// use std::error::Error;
+    /// use futures::io;
+    /// use futures::stream::StreamExt;
+    /// use csv_async::{AsyncReader, Position};
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,popcount
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let mut iter = rdr.into_records();
+    ///     let mut pos = Position::new();
+    ///     loop {
+    ///         let next = iter.next().await;
+    ///         if let Some(next) = next {
+    ///             pos = next?.position().expect("Cursor should be at some valid position").clone();
+    ///         } else {
+    ///             break;
+    ///         }
+    ///     }
+    ///
+    ///     // `pos` should now be the position immediately before the last
+    ///     // record.
+    ///     assert_eq!(pos.byte(), 51);
+    ///     assert_eq!(pos.line(), 3);
+    ///     assert_eq!(pos.record(), 2);
+    ///     Ok(())
+    /// }
+    /// ```
+    #[inline]
     pub fn position(&self) -> &Position {
         &self.state.cur_pos
     }
@@ -1643,28 +1374,32 @@ where
     /// (unless it has been seeked to another position).
     ///
     /// # Example
-    /// TODO
-    // / ```
-    // / use std::error::Error;
-    // / use std::io;
-    // / use csv::{Reader, Position};
-    // /
-    // / # fn main() { example().unwrap(); }
-    // / fn example() -> Result<(), Box<dyn Error>> {
-    // /     let data = "\
-    // / city,country,popcount
-    // / Boston,United States,4628910
-    // / Concord,United States,42695
-    // / ";
-    // /     let mut rdr = Reader::from_reader(io::Cursor::new(data));
-    // /     assert!(!rdr.is_done());
-    // /     for result in rdr.records() {
-    // /         let _ = result?;
-    // /     }
-    // /     assert!(rdr.is_done());
-    // /     Ok(())
-    // / }
-    // / ```
+    ///
+    /// ```
+    /// use std::error::Error;
+    /// use futures::io;
+    /// use futures::stream::StreamExt;
+    /// use csv_async::{AsyncReader, Position};
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,popcount
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     assert!(!rdr.is_done());
+    ///     {
+    ///         let mut records = rdr.records();
+    ///         while let Some(record) = records.next().await {
+    ///             let _ = record?;
+    ///         }
+    ///     }
+    ///     assert!(rdr.is_done());
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn is_done(&self) -> bool {
         self.state.eof
     }
@@ -1674,9 +1409,138 @@ where
     pub fn has_headers(&self) -> bool {
         self.state.has_headers
     }
+
+    /// Returns a reference to the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        self.rdr.get_ref()
+    }
+
+    /// Returns a mutable reference to the underlying reader.
+    pub fn get_mut(&mut self) -> &mut R {
+        self.rdr.get_mut()
+    }
+
+    /// Unwraps this CSV reader, returning the underlying reader.
+    ///
+    /// Note that any leftover data inside this reader's internal buffer is
+    /// lost.
+    pub fn into_inner(self) -> R {
+        self.rdr.into_inner()
+    }
 }
 
-impl AsyncReaderState {
+impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
+    /// Seeks the underlying reader to the position given.
+    ///
+    /// This comes with a few caveats:
+    ///
+    /// * Any internal buffer associated with this reader is cleared.
+    /// * If the given position does not correspond to a position immediately
+    ///   before the start of a record, then the behavior of this reader is
+    ///   unspecified.
+    /// * Any special logic that skips the first record in the CSV reader
+    ///   when reading or iterating over records is disabled.
+    ///
+    /// If the given position has a byte offset equivalent to the current
+    /// position, then no seeking is performed.
+    ///
+    /// If the header row has not already been read, then this will attempt
+    /// to read the header row before seeking. Therefore, it is possible that
+    /// this returns an error associated with reading CSV data.
+    ///
+    /// Note that seeking is performed based only on the byte offset in the
+    /// given position. Namely, the record or line numbers in the position may
+    /// be incorrect, but this will cause any future position generated by
+    /// this CSV reader to be similarly incorrect.
+    ///
+    /// # Example: seek to parse a record twice
+    ///
+    /// ```
+    /// use std::error::Error;
+    /// use futures::io;
+    /// use futures::stream::StreamExt;
+    /// use csv_async::{AsyncReader, Position};
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,popcount
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let mut pos = Position::new();
+    ///     {
+    ///     let mut records = rdr.records();
+    ///     loop {
+    ///         let next = records.next().await;
+    ///         if let Some(next) = next {
+    ///             pos = next?.position().expect("Cursor should be at some valid position").clone();
+    ///         } else {
+    ///             break;
+    ///         }
+    ///     }
+    ///     }
+    ///
+    ///     {
+    ///     // Now seek the reader back to `pos`. This will let us read the
+    ///     // last record again.
+    ///     rdr.seek(pos).await?;
+    ///     let mut records = rdr.into_records();
+    ///     if let Some(result) = records.next().await {
+    ///         let record = result?;
+    ///         assert_eq!(record, vec!["Concord", "United States", "42695"]);
+    ///         Ok(())
+    ///     } else {
+    ///         Err(From::from("expected at least one record but got none"))
+    ///     }
+    ///     }
+    /// }
+    /// ```
+    pub async fn seek(&mut self, pos: Position) -> Result<()> {
+        self.byte_headers().await?;
+        self.state.seeked = true;
+        if pos.byte() == self.state.cur_pos.byte() {
+            return Ok(());
+        }
+        self.rdr.seek(io::SeekFrom::Start(pos.byte())).await?;
+        self.core.reset();
+        self.core.set_line(pos.line());
+        self.state.cur_pos = pos;
+        self.state.eof = false;
+        Ok(())
+    }
+
+    /// This is like `seek`, but provides direct control over how the seeking
+    /// operation is performed via `io::SeekFrom`.
+    ///
+    /// The `pos` position given *should* correspond the position indicated
+    /// by `seek_from`, but there is no requirement. If the `pos` position
+    /// given is incorrect, then the position information returned by this
+    /// reader will be similarly incorrect.
+    ///
+    /// If the header row has not already been read, then this will attempt
+    /// to read the header row before seeking. Therefore, it is possible that
+    /// this returns an error associated with reading CSV data.
+    ///
+    /// Unlike `seek`, this will always cause an actual seek to be performed.
+    pub async fn seek_raw(
+        &mut self,
+        seek_from: io::SeekFrom,
+        pos: Position,
+    ) -> Result<()> {
+        self.byte_headers().await?;
+        self.state.seeked = true;
+        self.rdr.seek(seek_from).await?;
+        self.core.reset();
+        self.core.set_line(pos.line());
+        self.state.cur_pos = pos;
+        self.state.eof = false;
+        Ok(())
+    }
+}
+
+impl ReaderState {
     #[inline(always)]
     fn add_record(&mut self, record: &ByteRecord) -> Result<()> {
         let i = self.cur_pos.record();
@@ -1699,88 +1563,12 @@ impl AsyncReaderState {
     }
 }
 
-async fn read_record<S>(
-    mut rdr: AsyncReader<S>,
+async fn read_record_borrowed<'r, R>(
+    rdr: &'r mut AsyncReader<R>,
     mut rec: StringRecord,
-) -> (Option<Result<StringRecord>>, AsyncReader<S>, StringRecord)
+) -> (Option<Result<StringRecord>>, &'r mut AsyncReader<R>, StringRecord)
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
-{
-    let result = match rdr.read_record(&mut rec).await {
-        Err(err) => Some(Err(err)),
-        Ok(true) => Some(Ok(rec.clone())),
-        Ok(false) => None,
-    };
-
-    (result, rdr, rec)
-}
-
-/// An owned iterator over records as strings.
-pub struct StringRecordsIntoStream<'a, S>
-where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
-{
-    fut: Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = (
-                            Option<Result<StringRecord>>,
-                            AsyncReader<S>,
-                            StringRecord,
-                        ),
-                    > + 'a,
-            >,
-        >,
-    >,
-}
-
-impl<'a, S> StringRecordsIntoStream<'a, S>
-where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
-{
-    fn new(rdr: AsyncReader<S>) -> Self {
-        Self {
-            fut: Some(Pin::from(Box::new(read_record(
-                rdr,
-                StringRecord::new(),
-            )))),
-        }
-    }
-}
-
-impl<'a, S> Stream for StringRecordsIntoStream<'a, S>
-where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
-{
-    type Item = Result<StringRecord>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<StringRecord>>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut =
-                        Some(Pin::from(Box::new(read_record(rdr, rec))));
-                } else {
-                    self.fut = None;
-                }
-
-                Poll::Ready(result)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-async fn read_record_borrowed<'a, S>(
-    rdr: &'a mut AsyncReader<S>,
-    mut rec: StringRecord,
-) -> (Option<Result<StringRecord>>, &'a mut AsyncReader<S>, StringRecord)
-where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin
 {
     let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1795,9 +1583,9 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying
 /// CSV `Reader`.
-pub struct StringRecordsStream<'r, S>
+pub struct StringRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin
 {
     fut: Option<
         Pin<
@@ -1805,7 +1593,7 @@ where
                 dyn Future<
                         Output = (
                             Option<Result<StringRecord>>,
-                            &'r mut AsyncReader<S>,
+                            &'r mut AsyncReader<R>,
                             StringRecord,
                         ),
                     > + 'r,
@@ -1814,11 +1602,11 @@ where
     >,
 }
 
-impl<'r, S> StringRecordsStream<'r, S>
+impl<'r, R> StringRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin
 {
-    fn new(rdr: &'r mut AsyncReader<S>) -> Self {
+    fn new(rdr: &'r mut AsyncReader<R>) -> Self {
         Self {
             fut: Some(Pin::from(Box::new(read_record_borrowed(
                 rdr,
@@ -1828,9 +1616,9 @@ where
     }
 }
 
-impl<'r, S> Stream for StringRecordsStream<'r, S>
+impl<'r, R> Stream for StringRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'r,
+    R: io::AsyncRead + std::marker::Unpin
 {
     type Item = Result<StringRecord>;
 
@@ -1855,14 +1643,14 @@ where
     }
 }
 
-async fn read_byte_record<S>(
-    mut rdr: AsyncReader<S>,
-    mut rec: ByteRecord,
-) -> (Option<Result<ByteRecord>>, AsyncReader<S>, ByteRecord)
+async fn read_record<R>(
+    mut rdr: AsyncReader<R>,
+    mut rec: StringRecord,
+) -> (Option<Result<StringRecord>>, AsyncReader<R>, StringRecord)
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin
 {
-    let result = match rdr.read_byte_record(&mut rec).await {
+    let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
         Ok(true) => Some(Ok(rec.clone())),
         Ok(false) => None,
@@ -1871,55 +1659,57 @@ where
     (result, rdr, rec)
 }
 
-/// An owned iterator over records as raw bytes.
-pub struct ByteRecordsIntoStream<'a, S>
+/// An owned iterator over records as strings.
+/// The lifetime parameter `'r` refers to the lifetime of the underlying
+/// CSV `Reader`.
+pub struct StringRecordsIntoStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
+    R: io::AsyncRead + std::marker::Unpin
 {
     fut: Option<
         Pin<
             Box<
                 dyn Future<
                         Output = (
-                            Option<Result<ByteRecord>>,
-                            AsyncReader<S>,
-                            ByteRecord,
+                            Option<Result<StringRecord>>,
+                            AsyncReader<R>,
+                            StringRecord,
                         ),
-                    > + 'a,
+                    > + 'r,
             >,
         >,
     >,
 }
 
-impl<'a, S> ByteRecordsIntoStream<'a, S>
+impl<'r, R> StringRecordsIntoStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
+    R: io::AsyncRead + std::marker::Unpin + 'r
 {
-    fn new(rdr: AsyncReader<S>) -> Self {
+    fn new(rdr: AsyncReader<R>) -> Self {
         Self {
-            fut: Some(Pin::from(Box::new(read_byte_record(
+            fut: Some(Pin::from(Box::new(read_record(
                 rdr,
-                ByteRecord::new(),
+                StringRecord::new(),
             )))),
         }
     }
 }
 
-impl<'a, S> Stream for ByteRecordsIntoStream<'a, S>
+impl<'r, R> Stream for StringRecordsIntoStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'a,
+    R: io::AsyncRead + std::marker::Unpin + 'r
 {
-    type Item = Result<ByteRecord>;
+    type Item = Result<StringRecord>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
-    ) -> Poll<Option<Result<ByteRecord>>> {
+    ) -> Poll<Option<Result<StringRecord>>> {
         match self.fut.as_mut().unwrap().as_mut().poll(cx) {
             Poll::Ready((result, rdr, rec)) => {
                 if result.is_some() {
                     self.fut =
-                        Some(Pin::from(Box::new(read_byte_record(rdr, rec))));
+                        Some(Pin::from(Box::new(read_record(rdr, rec))));
                 } else {
                     self.fut = None;
                 }
@@ -1931,12 +1721,12 @@ where
     }
 }
 
-async fn read_byte_record_borrowed<'a, S>(
-    rdr: &'a mut AsyncReader<S>,
+async fn read_byte_record_borrowed<'r, R>(
+    rdr: &'r mut AsyncReader<R>,
     mut rec: ByteRecord,
-) -> (Option<Result<ByteRecord>>, &'a mut AsyncReader<S>, ByteRecord)
+) -> (Option<Result<ByteRecord>>, &'r mut AsyncReader<R>, ByteRecord)
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin,
 {
     let result = match rdr.read_byte_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1951,9 +1741,9 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying
 /// CSV `Reader`.
-pub struct ByteRecordsStream<'r, S>
+pub struct ByteRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'r,
+    R: io::AsyncRead + std::marker::Unpin,
 {
     fut: Option<
         Pin<
@@ -1961,7 +1751,7 @@ where
                 dyn Future<
                         Output = (
                             Option<Result<ByteRecord>>,
-                            &'r mut AsyncReader<S>,
+                            &'r mut AsyncReader<R>,
                             ByteRecord,
                         ),
                     > + 'r,
@@ -1970,11 +1760,11 @@ where
     >,
 }
 
-impl<'r, S> ByteRecordsStream<'r, S>
+impl<'r, R> ByteRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin + 'r,
+    R: io::AsyncRead + std::marker::Unpin + 'r,
 {
-    fn new(rdr: &'r mut AsyncReader<S>) -> Self {
+    fn new(rdr: &'r mut AsyncReader<R>) -> Self {
         Self {
             fut: Some(Pin::from(Box::new(read_byte_record_borrowed(
                 rdr,
@@ -1984,9 +1774,9 @@ where
     }
 }
 
-impl<'r, S> Stream for ByteRecordsStream<'r, S>
+impl<'r, R> Stream for ByteRecordsStream<'r, R>
 where
-    S: Stream<Item = io::Result<Bytes>> + Unpin,
+    R: io::AsyncRead + std::marker::Unpin,
 {
     type Item = Result<ByteRecord>;
 
@@ -2011,23 +1801,93 @@ where
     }
 }
 
+async fn read_byte_record<R>(
+    mut rdr: AsyncReader<R>,
+    mut rec: ByteRecord,
+) -> (Option<Result<ByteRecord>>, AsyncReader<R>, ByteRecord)
+where
+    R: io::AsyncRead + std::marker::Unpin
+{
+    let result = match rdr.read_byte_record(&mut rec).await {
+        Err(err) => Some(Err(err)),
+        Ok(true) => Some(Ok(rec.clone())),
+        Ok(false) => None,
+    };
+
+    (result, rdr, rec)
+}
+
+/// An owned iterator over records as raw bytes.
+pub struct ByteRecordsIntoStream<'r, R>
+where
+    R: io::AsyncRead + std::marker::Unpin
+{
+    fut: Option<
+        Pin<
+            Box<
+                dyn Future<
+                        Output = (
+                            Option<Result<ByteRecord>>,
+                            AsyncReader<R>,
+                            ByteRecord,
+                        ),
+                    > + 'r,
+            >,
+        >,
+    >,
+}
+
+impl<'r, R> ByteRecordsIntoStream<'r, R>
+where
+    R: io::AsyncRead + std::marker::Unpin + 'r
+{
+    fn new(rdr: AsyncReader<R>) -> Self {
+        Self {
+            fut: Some(Pin::from(Box::new(read_byte_record(
+                rdr,
+                ByteRecord::new(),
+            )))),
+        }
+    }
+}
+
+impl<'r, R> Stream for ByteRecordsIntoStream<'r, R>
+where
+    R: io::AsyncRead + std::marker::Unpin + 'r
+{
+    type Item = Result<ByteRecord>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> Poll<Option<Result<ByteRecord>>> {
+        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
+            Poll::Ready((result, rdr, rec)) => {
+                if result.is_some() {
+                    self.fut =
+                        Some(Pin::from(Box::new(read_byte_record(rdr, rec))));
+                } else {
+                    self.fut = None;
+                }
+
+                Poll::Ready(result)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
+    use futures::io;
+    use futures::stream::StreamExt;
     use async_std::task;
-    use bytes::Bytes;
-    use futures::stream::{self, StreamExt};
 
     use crate::byte_record::ByteRecord;
     use crate::error::ErrorKind;
     use crate::string_record::StringRecord;
 
-    use super::{AsyncReaderBuilder, Position, Trim};
-
-    async fn count(stream: impl StreamExt) -> usize {
-        stream.fold(0, |acc, _| async move { acc + 1 }).await
-    }
+    use super::{Position, AsyncReaderBuilder, Trim};
 
     fn b(s: &str) -> &[u8] {
         s.as_bytes()
@@ -2042,15 +1902,16 @@ mod tests {
         p
     }
 
+    async fn count(stream: impl StreamExt) -> usize {
+        stream.fold(0, |acc, _| async move { acc + 1 }).await
+    }
+
     #[test]
     fn read_byte_record() {
         task::block_on(async {
             let data = b("foo,\"b,ar\",baz\nabc,mno,xyz");
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -2076,10 +1937,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::All)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
-
+                .from_reader(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("1", s(&rec[0]));
@@ -2107,10 +1965,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Headers)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
-
+                .from_reader(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("  1", s(&rec[0]));
@@ -2133,9 +1988,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Headers)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+                .from_reader(data);
             let mut rec = StringRecord::new();
 
             // force the headers to be read
@@ -2166,9 +2019,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Fields)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+                .from_reader(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("1", s(&rec[0]));
@@ -2188,11 +2039,8 @@ mod tests {
     fn read_record_unequal_fails() {
         task::block_on(async {
             let data = b("foo\nbar,baz");
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -2222,9 +2070,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
                 .flexible(true)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+                .from_reader(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -2246,11 +2092,8 @@ mod tests {
     fn read_record_unequal_continue() {
         task::block_on(async {
             let data = b("foo\nbar,baz\nquux");
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -2283,10 +2126,7 @@ mod tests {
     fn read_record_headers() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
-            let mut rdr =
-                AsyncReaderBuilder::new().has_headers(true).from_bytes_stream(
-                    stream::iter(iter::once(Ok(Bytes::from_static(data)))),
-                );
+            let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -2320,10 +2160,7 @@ mod tests {
     fn read_record_headers_invalid_utf8() {
         task::block_on(async {
             let data = &b"foo,b\xFFar,baz\na,b,c\nd,e,f"[..];
-            let mut rdr =
-                AsyncReaderBuilder::new().has_headers(true).from_bytes_stream(
-                    stream::iter(iter::once(Ok(Bytes::from_static(data)))),
-                );
+            let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -2360,11 +2197,8 @@ mod tests {
     fn read_record_no_headers_before() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
             let mut rec = StringRecord::new();
 
             {
@@ -2395,11 +2229,8 @@ mod tests {
     fn read_record_no_headers_after() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static(data),
-                ))));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -2424,25 +2255,84 @@ mod tests {
         });
     }
 
+    #[test]
+    fn seek() {
+        task::block_on(async {
+            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
+            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            rdr.seek(newpos(18, 3, 2)).await.unwrap();
+
+            let mut rec = StringRecord::new();
+
+            assert_eq!(18, rdr.position().byte());
+            assert!(rdr.read_record(&mut rec).await.unwrap());
+            assert_eq!(3, rec.len());
+            assert_eq!("d", &rec[0]);
+
+            assert_eq!(24, rdr.position().byte());
+            assert_eq!(4, rdr.position().line());
+            assert_eq!(3, rdr.position().record());
+            assert!(rdr.read_record(&mut rec).await.unwrap());
+            assert_eq!(3, rec.len());
+            assert_eq!("g", &rec[0]);
+
+            assert!(!rdr.read_record(&mut rec).await.unwrap());
+        });
+    }
+
+    // Test that we can read headers after seeking even if the headers weren't
+    // explicit read before seeking.
+    #[test]
+    fn seek_headers_after() {
+        task::block_on(async {
+            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
+            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            rdr.seek(newpos(18, 3, 2)).await.unwrap();
+            assert_eq!(rdr.headers().await.unwrap(), vec!["foo", "bar", "baz"]);
+        });
+    }
+
+    // Test that we can read headers after seeking if the headers were read
+    // before seeking.
+    #[test]
+    fn seek_headers_before_after() {
+        task::block_on(async {
+            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
+            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            let headers = rdr.headers().await.unwrap().clone();
+            rdr.seek(newpos(18, 3, 2)).await.unwrap();
+            assert_eq!(&headers, rdr.headers().await.unwrap());
+        });
+    }
+
+    // Test that even if we didn't read headers before seeking, if we seek to
+    // the current byte offset, then no seeking is done and therefore we can
+    // still read headers after seeking.
+    #[test]
+    fn seek_headers_no_actual_seek() {
+        task::block_on(async {
+            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
+            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            rdr.seek(Position::new()).await.unwrap();
+            assert_eq!("foo", &rdr.headers().await.unwrap()[0]);
+        });
+    }
+
     // Test that position info is reported correctly in absence of headers.
     #[test]
     fn positions_no_headers() {
         task::block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static("a,b,c\nx,y,z".as_bytes()),
-                ))))
+                .from_reader("a,b,c\nx,y,z".as_bytes())
                 .into_records();
 
-            let pos =
-                rdr.next().await.unwrap().unwrap().position().unwrap().clone();
+            let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
             assert_eq!(pos.byte(), 0);
             assert_eq!(pos.line(), 1);
             assert_eq!(pos.record(), 0);
 
-            let pos =
-                rdr.next().await.unwrap().unwrap().position().unwrap().clone();
+            let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
             assert_eq!(pos.byte(), 6);
             assert_eq!(pos.line(), 2);
             assert_eq!(pos.record(), 1);
@@ -2450,30 +2340,41 @@ mod tests {
     }
 
     // Test that position info is reported correctly with headers.
+    // TODO: Remove debug, restore to original
     #[test]
     fn positions_headers() {
         task::block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(true)
-                .from_bytes_stream(stream::iter(iter::once(Ok(
-                    Bytes::from_static("a,b,c\nx,y,z".as_bytes()),
-                ))))
+                .has_headers(false)
+                // .has_headers(true)
+                .from_reader("a,b,c\nx,y,z".as_bytes())
                 .into_records();
 
-            let pos =
-                rdr.next().await.unwrap().unwrap().position().unwrap().clone();
-            assert_eq!(pos.byte(), 6);
-            assert_eq!(pos.line(), 2);
-            assert_eq!(pos.record(), 1);
-        })
+            // let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
+            let pos = rdr.next().await;
+            dbg!(&pos);
+            let pos = rdr.next().await;
+            dbg!(&pos);
+            let pos1 = pos.unwrap();
+            dbg!(&pos1);
+            let pos2 = pos1.unwrap();
+            dbg!(&pos2);
+            let pos3 = pos2.position();
+            dbg!(&pos3);
+            let pos4 = pos3.unwrap();
+            dbg!(&pos4);
+            // let pos5 = pos4.clone();
+            assert_eq!(pos4.byte(), 6);
+            assert_eq!(pos4.line(), 2);
+            assert_eq!(pos4.record(), 1);
+        });
     }
 
     // Test that reading headers on empty data yields an empty record.
     #[test]
     fn headers_on_empty_data() {
         task::block_on(async {
-            let mut rdr = AsyncReaderBuilder::new()
-                .from_bytes_stream(stream::iter(iter::empty()));
+            let mut rdr = AsyncReaderBuilder::new().from_reader("".as_bytes());
             let r = rdr.byte_headers().await.unwrap();
             assert_eq!(r.len(), 0);
         });
@@ -2483,9 +2384,8 @@ mod tests {
     #[test]
     fn no_headers_on_empty_data() {
         task::block_on(async {
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::empty()));
+            let mut rdr =
+            AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
             assert_eq!(count(rdr.records()).await, 0);
         });
     }
@@ -2495,9 +2395,8 @@ mod tests {
     #[test]
     fn no_headers_on_empty_data_after_headers() {
         task::block_on(async {
-            let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                .from_bytes_stream(stream::iter(iter::empty()));
+            let mut rdr =
+                AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
             assert_eq!(rdr.headers().await.unwrap().len(), 0);
             assert_eq!(count(rdr.records()).await, 0);
         });

@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing with support for async."
 edition = "2018"
@@ -9,12 +9,9 @@ keywords = ["csv", "comma", "parser", "delimited", "async"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bstr = { version = "0.2", features = ["serde1"] }
-bytes = "0.5"
+bstr = "0.2"
 csv-core = "0.1"
 futures = "0.3"
-serde = "1.0"
 
 [dev-dependencies]
 async-std = "1.6"
-serde = { version = "1.0", features = ["derive"] }
