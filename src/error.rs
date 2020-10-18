@@ -5,7 +5,7 @@ use std::result;
 
 use crate::byte_record::{ByteRecord, Position};
 
-/// A type alias for `Result<T, csv::Error>`.
+/// A type alias for `Result<T, csv_async::Error>`.
 pub type Result<T> = result::Result<T, Error>;
 
 /// An error that can occur when processing CSV data.

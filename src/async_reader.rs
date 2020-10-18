@@ -15,7 +15,7 @@ use crate::{Terminator, Trim};
 /// Builds a CSV reader with various configuration knobs.
 ///
 /// This builder can be used to tweak the field delimiter, record terminator
-/// and more. Once a CSV `Reader` is built, its configuration cannot be
+/// and more. Once a CSV `AsyncReader` is built, its configuration cannot be
 /// changed.
 #[derive(Debug)]
 pub struct AsyncReaderBuilder {

@@ -20,13 +20,13 @@ programs that do CSV reading and writing.
 The primary types in this crate are
 [`AsyncReader`](struct.AsyncReader.html)
 and
-[`Writer`](struct.Writer.html),
+[`AsyncWriter`](struct.AsyncWriter.html),
 for reading and writing CSV data respectively.
 Correspondingly, to support CSV data with custom field or record delimiters
 (among many other things), you should use either a
 [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html)
 or a
-[`WriterBuilder`](struct.WriterBuilder.html),
+[`AsyncWriterBuilder`](struct.AsyncWriterBuilder.html),
 depending on whether you're reading or writing CSV data.
 
 The standard CSV record types are
@@ -49,81 +49,146 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-csv-async = "0.0.2"
+csv-async = "0.0.3"
 ```
 
 # Example
 
-This example shows how to read CSV file in asynchronous context and print each record to
-stdout.
+This example shows how to read and write CSV file in asynchronous context and get into some record details.
 
-There are more examples in the [cookbook](cookbook/index.html).
+Sample input file:
+```csv
+city,region,country,population
+Southborough,MA,United States,9686
+Northbridge,MA,United States,14061
+Marlborough,MA,United States,38334
+Springfield,MA,United States,152227
+Springfield,MO,United States,150443
+Springfield,NJ,United States,14976
+Concord,NH,United States,42605
+```
 
 ```no_run
 use std::error::Error;
 use std::process;
-use async_std::io;
 use futures::stream::StreamExt;
+use async_std::fs::File;
 
-async fn example() -> Result<(), Box<dyn Error>> {
-    // Build the CSV reader and iterate over each record.
-    let mut rdr = csv_async::AsyncReader::from_reader(io::stdin());
-    let mut records = rdr.into_records();
-    while let Some(result) = records.next().await {
-        // The iterator yields Result<StringRecord, Error>, so we check the
-        // error here.
-        let record = result?;
-        println!("{:?}", record);
+async fn filter_by_region(region:&str, file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
+    // Function reads CSV file that has column named "region"
+    // at second position (index = 1).
+    // It writes to new file only rows with region equal to passed argument
+    // and remove region column.
+    let mut rdr = csv_async::AsyncReader::from_reader(
+        File::open(file_in).await?
+    );
+    let mut wri = csv_async::AsyncWriter::from_writer(
+        File::create(file_out).await?
+    );
+    wri.write_record(rdr
+        .headers()
+        .await?.into_iter()
+        .filter(|h| *h != "region")
+    ).await?;
+    let mut records = rdr.records();
+    while let Some(record) = records.next().await {
+        let record = record?;
+        match record.get(1) {
+            Some(reg) if reg == region => 
+                wri.write_record(record
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != 1)
+                    .map(|(_, s)| s)
+                ).await?,
+            _ => {},
+        }
     }
     Ok(())
 }
 
 fn main() {
     async_std::task::block_on(async {
-        if let Err(err) = example().await {
-            println!("error running example: {}", err);
+        if let Err(err) = filter_by_region(
+            "MA",
+            "/tmp/all_regions.csv",
+            "/tmp/MA_only.csv"
+        ).await {
+            println!("error running filter_by_region: {}", err);
             process::exit(1);
         }
     });
 }
 ```
 
-The above example can be run like so:
-
-```ignore
-$ git clone https://github.com/gwierzchowski/csv-async.git
-$ cd csv-async
-$ cargo run --example cookbook-read-basic < examples/data/smallpop.csv
-```
+TODO: There are more examples in the [cookbook](cookbook/index.html).
 */
 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::process;
     use futures::stream::StreamExt;
     use async_std::fs::File;
-    
-    async fn example() -> Result<(), Box<dyn Error>> {
+   
+    async fn crete_async(file:&str) -> Result<(), Box<dyn Error>> {
         // Build the CSV reader and iterate over each record.
-        let mut rdr = crate::AsyncReader::from_reader(
-            File::open("examples/data/smallpop.csv").await?
+        let mut wri = crate::AsyncWriter::from_writer(
+            File::create(file).await?
         );
+        wri.write_record(&["city","region","country","population"]).await?;
+        wri.write_record(&["Northbridge","MA","United States","14061"]).await?;
+        wri.write_record(&["Westborough","MA","United States","29313"]).await?;
+        wri.write_record(&["Springfield","NJ","United States","14976"]).await?;
+        wri.flush().await?;
+        Ok(())
+    }
+   
+    async fn copy_async(file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
+        let mut rdr = crate::AsyncReader::from_reader(
+            File::open(file_in).await?
+        );
+        let mut wri = crate::AsyncWriter::from_writer(
+            File::create(file_out).await?
+        );
+        wri.write_record(rdr.headers().await?.into_iter()).await?;
         let mut records = rdr.records();
         while let Some(record) = records.next().await {
-            println!("{:?}", record?);
+            wri.write_record(&record?).await?;
         }
         Ok(())
     }
-
+   
     #[test]
-    fn test1() {
+    fn test_on_files() {
+        use std::io::Read;
+        use std::hash::Hasher;
+        std::fs::create_dir_all("examples/data").unwrap();
+        let file_in  = "examples/data/smallpop.csv";
+        let file_out = "examples/data/smallpop_out.csv";
+
         async_std::task::block_on(async {
-            if let Err(err) = example().await {
-                println!("error running example: {}", err);
-                process::exit(1);
+            if let Err(err) = crete_async(file_in).await {
+                assert!(false, "error running crete_async: {}", err);
+            }
+            if let Err(err) = copy_async(file_in, file_out).await {
+                assert!(false, "error running copy_async: {}", err);
             }
         });
+        
+        let mut bytes_in  = vec![];
+        std::fs::File::open(file_in).unwrap().read_to_end(&mut bytes_in).unwrap();
+        let mut hasher_in = std::collections::hash_map::DefaultHasher::new();
+        hasher_in.write(&bytes_in);
+
+        let mut bytes_out = vec![];
+        std::fs::File::open(file_out).unwrap().read_to_end(&mut bytes_out).unwrap();
+        let mut hasher_out = std::collections::hash_map::DefaultHasher::new();
+        hasher_out.write(&bytes_out);
+
+        assert_eq!(hasher_in.finish(), hasher_out.finish(), "Cloned file {} is different than source {}", file_out, file_in);
+        
+        std::fs::remove_file(file_in).unwrap();
+        std::fs::remove_file(file_out).unwrap();
     }
 }
 
@@ -133,21 +198,20 @@ pub use crate::error::{
     Error, ErrorKind, FromUtf8Error, IntoInnerError, Result, Utf8Error,
 };
 pub use crate::string_record::{StringRecord, StringRecordIter};
-// pub use crate::writer::{Writer, WriterBuilder};
-
 pub use crate::async_reader::{
     AsyncReader, AsyncReaderBuilder, ByteRecordsIntoStream, ByteRecordsStream,
     StringRecordsIntoStream, StringRecordsStream,
 };
+pub use crate::async_writer::{AsyncWriter, AsyncWriterBuilder};
 
 mod byte_record;
-// pub mod cookbook;
 mod error;
 mod string_record;
-// pub mod tutorial;
-// mod writer;
-
 mod async_reader;
+mod async_writer;
+
+// pub mod cookbook;
+// pub mod tutorial;
 
 /// The quoting style to use when writing CSV data.
 #[derive(Clone, Copy, Debug)]

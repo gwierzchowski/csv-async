@@ -222,7 +222,7 @@ impl StringRecord {
         self.into_iter()
     }
 
-    /// Return the field at index `i`.
+    /// Return the field at zero-based index `i`.
     ///
     /// If no field at index `i` exists, then this returns `None`.
     ///
