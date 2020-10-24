@@ -3,83 +3,17 @@ use std::pin::Pin;
 use std::result;
 use std::task::{Context, Poll};
 
-use futures::io::{self, AsyncBufRead, AsyncSeekExt};
-use futures::stream::Stream;
-use csv_core::{Reader as CoreReader, ReaderBuilder as CoreReaderBuilder};
+use tokio::io::{self, AsyncBufRead};
+use tokio::stream::Stream;
+use csv_core::{Reader as CoreReader};
 
+use crate::{AsyncReaderBuilder, Trim};
 use crate::byte_record::{ByteRecord, Position};
 use crate::error::{Error, ErrorKind, Result, Utf8Error};
 use crate::string_record::StringRecord;
-use crate::{Terminator, Trim};
 
-/// Builds a CSV reader with various configuration knobs.
-///
-/// This builder can be used to tweak the field delimiter, record terminator
-/// and more. Once a CSV `AsyncReader` is built, its configuration cannot be
-/// changed.
-#[derive(Debug)]
-pub struct AsyncReaderBuilder {
-    capacity: usize,
-    flexible: bool,
-    has_headers: bool,
-    trim: Trim,
-    /// The underlying CSV parser builder.
-    ///
-    /// We explicitly put this on the heap because CoreReaderBuilder embeds an
-    /// entire DFA transition table, which along with other things, tallies up
-    /// to almost 500 bytes on the stack.
-    builder: Box<CoreReaderBuilder>,
-}
-
-impl Default for AsyncReaderBuilder {
-    fn default() -> AsyncReaderBuilder {
-        AsyncReaderBuilder {
-            capacity: 8 * (1 << 10),
-            flexible: false,
-            has_headers: true,
-            trim: Trim::default(),
-            builder: Box::new(CoreReaderBuilder::default()),
-        }
-    }
-}
 
 impl AsyncReaderBuilder {
-    /// Create a new builder for configuring CSV parsing.
-    ///
-    /// To convert a builder into a reader, call one of the methods starting
-    /// with `from_`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReaderBuilder, StringRecord};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States,4628910
-    /// Concord,United States,42695
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new().from_reader(data.as_bytes());
-    ///
-    ///     let records = rdr
-    ///         .records()
-    ///         .map(Result::unwrap)
-    ///         .collect::<Vec<StringRecord>>().await;
-    ///     assert_eq!(records, vec![
-    ///         vec!["Boston", "United States", "4628910"],
-    ///         vec!["Concord", "United States", "42695"],
-    ///     ]);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn new() -> AsyncReaderBuilder {
-        AsyncReaderBuilder::default()
-    }
-
     /// Build a CSV parser from this configuration that reads data from `rdr`.
     ///
     /// Note that the CSV reader is buffered automatically, so you should not
@@ -92,7 +26,7 @@ impl AsyncReaderBuilder {
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReaderBuilder;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -110,473 +44,76 @@ impl AsyncReaderBuilder {
     pub fn from_reader<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
+}
 
-    /// The field delimiter to use when parsing CSV.
+#[derive(Debug)]
+pub struct ReaderState {
+    /// When set, this contains the first row of any parsed CSV data.
     ///
-    /// The default is `b','`.
+    /// This is always populated, regardless of whether `has_headers` is set.
+    headers: Option<Headers>,
+    /// When set, the first row of parsed CSV data is excluded from things
+    /// that read records, like iterators and `read_record`.
+    has_headers: bool,
+    /// When set, there is no restriction on the length of records. When not
+    /// set, every record must have the same number of fields, or else an error
+    /// is reported.
+    flexible: bool,
+    trim: Trim,
+    /// The number of fields in the first record parsed.
+    first_field_count: Option<u64>,
+    /// The current position of the parser.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReaderBuilder, StringRecord};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await}); }
-    /// async fn example() {
-    ///     let data = "\
-    /// city;country;pop
-    /// Boston;United States;4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .delimiter(b';')
-    ///         .from_reader(data.as_bytes());
-    ///
-    ///     let records = rdr
-    ///         .records()
-    ///         .map(Result::unwrap)
-    ///         .collect::<Vec<StringRecord>>().await;
-    ///     assert_eq!(records, vec![
-    ///         vec!["Boston", "United States", "4628910"],
-    ///     ]);
-     /// }
-    /// ```
-    pub fn delimiter(&mut self, delimiter: u8) -> &mut AsyncReaderBuilder {
-        self.builder.delimiter(delimiter);
-        self
-    }
+    /// Note that this position is only observable by callers at the start
+    /// of a record. More granular positions are not supported.
+    cur_pos: Position,
+    /// Whether the first record has been read or not.
+    first: bool,
+    /// Whether the reader has been seeked or not.
+    seeked: bool,
+    /// Whether EOF of the underlying reader has been reached or not.
+    eof: bool,
+}
 
-    /// Whether to treat the first row as a special header row.
-    ///
-    /// By default, the first row is treated as a special header row, which
-    /// means the header is never returned by any of the record reading methods
-    /// or iterators. When this is disabled (`yes` set to `false`), the first
-    /// row is not treated specially.
-    ///
-    /// Note that the `headers` and `byte_headers` methods are unaffected by
-    /// whether this is set. Those methods always return the first record.
-    ///
-    /// # Example
-    ///
-    /// This example shows what happens when `has_headers` is disabled.
-    /// Namely, the first row is treated just like any other row.
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States,4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .has_headers(false)
-    ///         .from_reader(data.as_bytes());
-    ///     let mut iter = rdr.records();
-    ///
-    ///     // Read the first record.
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["city", "country", "pop"]);
-    ///
-    ///     // Read the second record.
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    /// 
-    ///     assert!(iter.next().await.is_none());
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn has_headers(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
-        self.has_headers = yes;
-        self
-    }
+/// Headers encapsulates any data associated with the headers of CSV data.
+///
+/// The headers always correspond to the first row.
+#[derive(Debug)]
+struct Headers {
+    /// The header, as raw bytes.
+    byte_record: ByteRecord,
+    /// The header, as valid UTF-8 (or a UTF-8 error).
+    string_record: result::Result<StringRecord, Utf8Error>,
+}
 
-    /// Whether the number of fields in records is allowed to change or not.
-    ///
-    /// When disabled (which is the default), parsing CSV data will return an
-    /// error if a record is found with a number of fields different from the
-    /// number of fields in a previous record.
-    ///
-    /// When enabled, this error checking is turned off.
-    ///
-    /// # Example: flexible records enabled
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     // Notice that the first row is missing the population count.
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .flexible(true)
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States"]);
-    ///     Ok(())
-   /// }
-    /// ```
-    ///
-    /// # Example: flexible records disabled
-    ///
-    /// This shows the error that appears when records of unequal length
-    /// are found and flexible records have been disabled (which is the
-    /// default).
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{ErrorKind, AsyncReaderBuilder};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     // Notice that the first row is missing the population count.
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .flexible(false)
-    ///         .from_reader(data.as_bytes());
-    ///
-    ///     let mut records = rdr.records();
-    ///     match records.next().await {
-    ///         Some(Err(err)) => match *err.kind() {
-    ///             ErrorKind::UnequalLengths { expected_len, len, .. } => {
-    ///                 // The header row has 3 fields...
-    ///                 assert_eq!(expected_len, 3);
-    ///                 // ... but the first row has only 2 fields.
-    ///                 assert_eq!(len, 2);
-    ///                 Ok(())
-    ///             }
-    ///             ref wrong => {
-    ///                 Err(From::from(format!(
-    ///                     "expected UnequalLengths error but got {:?}",
-    ///                     wrong)))
-    ///             }
-    ///         }
-    ///         Some(Ok(rec)) =>
-    ///             Err(From::from(format!(
-    ///                 "expected one errored record but got good record {:?}",
-    ///                  rec))),
-    ///         None =>
-    ///            Err(From::from(
-    ///                "expected one errored record but got none"))
-    ///     }
-    /// }
-    /// ```
-    pub fn flexible(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
-        self.flexible = yes;
-        self
-    }
-
-    /// Whether fields are trimmed of leading and trailing whitespace or not.
-    ///
-    /// By default, no trimming is performed. This method permits one to
-    /// override that behavior and choose one of the following options:
-    ///
-    /// 1. `Trim::Headers` trims only header values.
-    /// 2. `Trim::Fields` trims only non-header or "field" values.
-    /// 3. `Trim::All` trims both header and non-header values.
-    ///
-    /// A value is only interpreted as a header value if this CSV reader is
-    /// configured to read a header record (which is the default).
-    ///
-    /// When reading string records, characters meeting the definition of
-    /// Unicode whitespace are trimmed. When reading byte records, characters
-    /// meeting the definition of ASCII whitespace are trimmed. ASCII
-    /// whitespace characters correspond to the set `[\t\n\v\f\r ]`.
-    ///
-    /// # Example
-    ///
-    /// This example shows what happens when all values are trimmed.
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReaderBuilder, StringRecord, Trim};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city ,   country ,  pop
-    /// Boston,\"
-    ///    United States\",4628910
-    /// Concord,   United States   ,42695
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .trim(Trim::All)
-    ///         .from_reader(data.as_bytes());
-    ///     let records = rdr
-    ///         .records()
-    ///         .map(Result::unwrap)
-    ///         .collect::<Vec<StringRecord>>().await;
-    ///     assert_eq!(records, vec![
-    ///         vec!["Boston", "United States", "4628910"],
-    ///         vec!["Concord", "United States", "42695"],
-    ///     ]);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn trim(&mut self, trim: Trim) -> &mut AsyncReaderBuilder {
-        self.trim = trim;
-        self
-    }
-
-    /// The record terminator to use when parsing CSV.
-    ///
-    /// A record terminator can be any single byte. The default is a special
-    /// value, `Terminator::CRLF`, which treats any occurrence of `\r`, `\n`
-    /// or `\r\n` as a single record terminator.
-    ///
-    /// # Example: `$` as a record terminator
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReaderBuilder, Terminator};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "city,country,pop$Boston,United States,4628910";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .terminator(Terminator::Any(b'$'))
-    ///         .from_reader(data.as_bytes());
-    ///     let mut iter = rdr.records();
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert!(iter.next().await.is_none());
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn terminator(&mut self, term: Terminator) -> &mut AsyncReaderBuilder {
-        self.builder.terminator(term.to_core());
-        self
-    }
-
-    /// The quote character to use when parsing CSV.
-    ///
-    /// The default is `b'"'`.
-    ///
-    /// # Example: single quotes instead of double quotes
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,'United States',4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .quote(b'\'')
-    ///         .from_reader(data.as_bytes());
-    ///     let mut iter = rdr.records();
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert!(iter.next().await.is_none());
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn quote(&mut self, quote: u8) -> &mut AsyncReaderBuilder {
-        self.builder.quote(quote);
-        self
-    }
-
-    /// The escape character to use when parsing CSV.
-    ///
-    /// In some variants of CSV, quotes are escaped using a special escape
-    /// character like `\` (instead of escaping quotes by doubling them).
-    ///
-    /// By default, recognizing these idiosyncratic escapes is disabled.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,\"The \\\"United\\\" States\",4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .escape(Some(b'\\'))
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\" States", "4628910"]);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn escape(&mut self, escape: Option<u8>) -> &mut AsyncReaderBuilder {
-        self.builder.escape(escape);
-        self
-    }
-
-    /// Enable double quote escapes.
-    ///
-    /// This is enabled by default, but it may be disabled. When disabled,
-    /// doubled quotes are not interpreted as escapes.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,\"The \"\"United\"\" States\",4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .double_quote(false)
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\"\" States\"", "4628910"]);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn double_quote(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
-        self.builder.double_quote(yes);
-        self
-    }
-
-    /// Enable or disable quoting.
-    ///
-    /// This is enabled by default, but it may be disabled. When disabled,
-    /// quotes are not treated specially.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,\"The United States,4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .quoting(false)
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "\"The United States", "4628910"]);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn quoting(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
-        self.builder.quoting(yes);
-        self
-    }
-
-    /// The comment character to use when parsing CSV.
-    ///
-    /// If the start of a record begins with the byte given here, then that
-    /// line is ignored by the CSV parser.
-    ///
-    /// This is disabled by default.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// #Concord,United States,42695
-    /// Boston,United States,4628910
-    /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .comment(Some(b'#'))
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert!(records.next().await.is_none());
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn comment(&mut self, comment: Option<u8>) -> &mut AsyncReaderBuilder {
-        self.builder.comment(comment);
-        self
-    }
-
-    /// A convenience method for specifying a configuration to read ASCII
-    /// delimited text.
-    ///
-    /// This sets the delimiter and record terminator to the ASCII unit
-    /// separator (`\x1F`) and record separator (`\x1E`), respectively.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReaderBuilder;
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city\x1Fcountry\x1Fpop\x1EBoston\x1FUnited States\x1F4628910";
-    ///     let mut rdr = AsyncReaderBuilder::new()
-    ///         .ascii()
-    ///         .from_reader(data.as_bytes());
-    ///     let mut records = rdr.byte_records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert!(records.next().await.is_none());
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn ascii(&mut self) -> &mut AsyncReaderBuilder {
-        self.builder.ascii();
-        self
-    }
-
-    /// Set the capacity (in bytes) of the buffer used in the CSV reader.
-    /// This defaults to a reasonable setting.
-    pub fn buffer_capacity(&mut self, capacity: usize) -> &mut AsyncReaderBuilder {
-        self.capacity = capacity;
-        self
-    }
-
-    /// Enable or disable the NFA for parsing CSV.
-    ///
-    /// This is intended to be a debug option. The NFA is always slower than
-    /// the DFA.
-    #[doc(hidden)]
-    pub fn nfa(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
-        self.builder.nfa(yes);
-        self
+impl ReaderState {
+    #[inline(always)]
+    fn add_record(&mut self, record: &ByteRecord) -> Result<()> {
+        let i = self.cur_pos.record();
+        self.cur_pos.set_record(i.checked_add(1).unwrap());
+        if !self.flexible {
+            match self.first_field_count {
+                None => self.first_field_count = Some(record.len() as u64),
+                Some(expected) => {
+                    if record.len() as u64 != expected {
+                        return Err(Error::new(ErrorKind::UnequalLengths {
+                            pos: record.position().map(Clone::clone),
+                            expected_len: expected,
+                            len: record.len() as u64,
+                        }));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
 /// A already configured CSV reader.
 ///
 /// A CSV reader takes as input CSV data and transforms that into standard Rust
-/// values. The most flexible way to read CSV data is as a sequence of records,
-/// where a record is a sequence of fields and each field is a string. However,
-/// a reader can also deserialize CSV data into Rust types like `i64` or
-/// `(String, f64, f64, f64)` or even a custom struct automatically using
-/// Serde.
+/// values. The reader reads CSV data is as a sequence of records,
+/// where a record is a sequence of fields and each field is a string.
 ///
 /// # Configuration
 ///
@@ -591,7 +128,7 @@ impl AsyncReaderBuilder {
 /// use futures::stream::StreamExt;
 /// use csv_async::AsyncReaderBuilder;
 ///
-/// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+/// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
 /// async fn example() -> Result<(), Box<dyn Error>> {
 ///     let data = "\
 /// city;country;pop
@@ -655,46 +192,6 @@ pub struct AsyncReader<R> {
     state: ReaderState,
 }
 
-#[derive(Debug)]
-struct ReaderState {
-    /// When set, this contains the first row of any parsed CSV data.
-    ///
-    /// This is always populated, regardless of whether `has_headers` is set.
-    headers: Option<Headers>,
-    /// When set, the first row of parsed CSV data is excluded from things
-    /// that read records, like iterators and `read_record`.
-    has_headers: bool,
-    /// When set, there is no restriction on the length of records. When not
-    /// set, every record must have the same number of fields, or else an error
-    /// is reported.
-    flexible: bool,
-    trim: Trim,
-    /// The number of fields in the first record parsed.
-    first_field_count: Option<u64>,
-    /// The current position of the parser.
-    ///
-    /// Note that this position is only observable by callers at the start
-    /// of a record. More granular positions are not supported.
-    cur_pos: Position,
-    /// Whether the first record has been read or not.
-    first: bool,
-    /// Whether the reader has been seeked or not.
-    seeked: bool,
-    /// Whether EOF of the underlying reader has been reached or not.
-    eof: bool,
-}
-
-/// Headers encapsulates any data associated with the headers of CSV data.
-///
-/// The headers always correspond to the first row.
-#[derive(Debug)]
-struct Headers {
-    /// The header, as raw bytes.
-    byte_record: ByteRecord,
-    /// The header, as valid UTF-8 (or a UTF-8 error).
-    string_record: result::Result<StringRecord, Utf8Error>,
-}
-
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 struct FillBuf<'a, R: AsyncBufRead + ?Sized> {
     reader: &'a mut R,
@@ -734,13 +231,13 @@ where
     /// bytes.
     fn new(builder: &AsyncReaderBuilder, rdr: R) -> AsyncReader<R> {
         AsyncReader {
-            core: Box::new(builder.builder.build()),
-            rdr: io::BufReader::with_capacity(builder.capacity, rdr),
+            core: Box::new(builder.get_core_builder_ref().build()),
+            rdr: io::BufReader::with_capacity(builder.get_buffer_capacity(), rdr),
             state: ReaderState {
                 headers: None,
-                has_headers: builder.has_headers,
-                flexible: builder.flexible,
-                trim: builder.trim,
+                has_headers: builder.get_headers_presence(),
+                flexible: builder.is_flexible(),
+                trim: builder.get_trim_option(),
                 first_field_count: None,
                 cur_pos: Position::new(),
                 first: false,
@@ -762,7 +259,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -797,7 +294,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -834,7 +331,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -868,7 +365,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -904,7 +401,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -945,7 +442,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1013,7 +510,7 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1063,7 +560,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1094,7 +591,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, ByteRecord};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1163,7 +660,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1211,7 +708,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{ByteRecord, AsyncReader};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -1336,14 +833,14 @@ where
     /// use futures::stream::StreamExt;
     /// use csv_async::{AsyncReader, Position};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,popcount
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let rdr = AsyncReader::from_reader(data.as_bytes());
     ///     let mut iter = rdr.into_records();
     ///     let mut pos = Position::new();
     ///     loop {
@@ -1377,18 +874,18 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use futures::io;
-    /// use futures::stream::StreamExt;
+    /// use tokio::io;
+    /// use tokio::stream::StreamExt;
     /// use csv_async::{AsyncReader, Position};
     ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,popcount
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
     ///     assert!(!rdr.is_done());
     ///     {
     ///         let mut records = rdr.records();
@@ -1430,137 +927,8 @@ where
 }
 
 impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
-    /// Seeks the underlying reader to the position given.
-    ///
-    /// This comes with a few caveats:
-    ///
-    /// * Any internal buffer associated with this reader is cleared.
-    /// * If the given position does not correspond to a position immediately
-    ///   before the start of a record, then the behavior of this reader is
-    ///   unspecified.
-    /// * Any special logic that skips the first record in the CSV reader
-    ///   when reading or iterating over records is disabled.
-    ///
-    /// If the given position has a byte offset equivalent to the current
-    /// position, then no seeking is performed.
-    ///
-    /// If the header row has not already been read, then this will attempt
-    /// to read the header row before seeking. Therefore, it is possible that
-    /// this returns an error associated with reading CSV data.
-    ///
-    /// Note that seeking is performed based only on the byte offset in the
-    /// given position. Namely, the record or line numbers in the position may
-    /// be incorrect, but this will cause any future position generated by
-    /// this CSV reader to be similarly incorrect.
-    ///
-    /// # Example: seek to parse a record twice
-    ///
-    /// ```
-    /// use std::error::Error;
-    /// use futures::io;
-    /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReader, Position};
-    ///
-    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
-    /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,popcount
-    /// Boston,United States,4628910
-    /// Concord,United States,42695
-    /// ";
-    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
-    ///     let mut pos = Position::new();
-    ///     {
-    ///     let mut records = rdr.records();
-    ///     loop {
-    ///         let next = records.next().await;
-    ///         if let Some(next) = next {
-    ///             pos = next?.position().expect("Cursor should be at some valid position").clone();
-    ///         } else {
-    ///             break;
-    ///         }
-    ///     }
-    ///     }
-    ///
-    ///     {
-    ///     // Now seek the reader back to `pos`. This will let us read the
-    ///     // last record again.
-    ///     rdr.seek(pos).await?;
-    ///     let mut records = rdr.into_records();
-    ///     if let Some(result) = records.next().await {
-    ///         let record = result?;
-    ///         assert_eq!(record, vec!["Concord", "United States", "42695"]);
-    ///         Ok(())
-    ///     } else {
-    ///         Err(From::from("expected at least one record but got none"))
-    ///     }
-    ///     }
-    /// }
-    /// ```
-    pub async fn seek(&mut self, pos: Position) -> Result<()> {
-        self.byte_headers().await?;
-        self.state.seeked = true;
-        if pos.byte() == self.state.cur_pos.byte() {
-            return Ok(());
-        }
-        self.rdr.seek(io::SeekFrom::Start(pos.byte())).await?;
-        self.core.reset();
-        self.core.set_line(pos.line());
-        self.state.cur_pos = pos;
-        self.state.eof = false;
-        Ok(())
-    }
-
-    /// This is like `seek`, but provides direct control over how the seeking
-    /// operation is performed via `io::SeekFrom`.
-    ///
-    /// The `pos` position given *should* correspond the position indicated
-    /// by `seek_from`, but there is no requirement. If the `pos` position
-    /// given is incorrect, then the position information returned by this
-    /// reader will be similarly incorrect.
-    ///
-    /// If the header row has not already been read, then this will attempt
-    /// to read the header row before seeking. Therefore, it is possible that
-    /// this returns an error associated with reading CSV data.
-    ///
-    /// Unlike `seek`, this will always cause an actual seek to be performed.
-    pub async fn seek_raw(
-        &mut self,
-        seek_from: io::SeekFrom,
-        pos: Position,
-    ) -> Result<()> {
-        self.byte_headers().await?;
-        self.state.seeked = true;
-        self.rdr.seek(seek_from).await?;
-        self.core.reset();
-        self.core.set_line(pos.line());
-        self.state.cur_pos = pos;
-        self.state.eof = false;
-        Ok(())
-    }
-}
-
-impl ReaderState {
-    #[inline(always)]
-    fn add_record(&mut self, record: &ByteRecord) -> Result<()> {
-        let i = self.cur_pos.record();
-        self.cur_pos.set_record(i.checked_add(1).unwrap());
-        if !self.flexible {
-            match self.first_field_count {
-                None => self.first_field_count = Some(record.len() as u64),
-                Some(expected) => {
-                    if record.len() as u64 != expected {
-                        return Err(Error::new(ErrorKind::UnequalLengths {
-                            pos: record.position().map(Clone::clone),
-                            expected_len: expected,
-                            len: record.len() as u64,
-                        }));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
+    // Seeks the underlying reader to the position given.
+    // Not implemented - TODO
 }
 
 async fn read_record_borrowed<'r, R>(
@@ -1879,9 +1247,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use futures::io;
-    use futures::stream::StreamExt;
-    use async_std::task;
+    use tokio::stream::StreamExt;
+    use tokio::runtime::Runtime;
 
     use crate::byte_record::ByteRecord;
     use crate::error::ErrorKind;
@@ -1903,12 +1270,12 @@ mod tests {
     }
 
     async fn count(stream: impl StreamExt) -> usize {
-        stream.fold(0, |acc, _| async move { acc + 1 }).await
+        stream.fold(0, |acc, _| acc + 1 ).await
     }
 
     #[test]
     fn read_byte_record() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,\"b,ar\",baz\nabc,mno,xyz");
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader(data);
@@ -1932,7 +1299,7 @@ mod tests {
 
     #[test]
     fn read_trimmed_records_and_headers() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,  bar,\tbaz\n  1,  2,  3\n1\t,\t,3\t\t");
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
@@ -1960,7 +1327,7 @@ mod tests {
 
     #[test]
     fn read_trimmed_header() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,  bar,\tbaz\n  1,  2,  3\n1\t,\t,3\t\t");
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
@@ -1983,7 +1350,7 @@ mod tests {
 
     #[test]
     fn read_trimed_header_invalid_utf8() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = &b"foo,  b\xFFar,\tbaz\na,b,c\nd,e,f"[..];
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
@@ -2014,7 +1381,7 @@ mod tests {
 
     #[test]
     fn read_trimmed_records() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,  bar,\tbaz\n  1,  2,  3\n1\t,\t,3\t\t");
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
@@ -2037,7 +1404,7 @@ mod tests {
 
     #[test]
     fn read_record_unequal_fails() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo\nbar,baz");
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader(data);
@@ -2065,7 +1432,7 @@ mod tests {
 
     #[test]
     fn read_record_unequal_ok() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo\nbar,baz");
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
@@ -2090,7 +1457,7 @@ mod tests {
     // if we want.
     #[test]
     fn read_record_unequal_continue() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo\nbar,baz\nquux");
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader(data);
@@ -2124,7 +1491,7 @@ mod tests {
 
     #[test]
     fn read_record_headers() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
             let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
             let mut rec = StringRecord::new();
@@ -2158,7 +1525,7 @@ mod tests {
 
     #[test]
     fn read_record_headers_invalid_utf8() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = &b"foo,b\xFFar,baz\na,b,c\nd,e,f"[..];
             let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
             let mut rec = StringRecord::new();
@@ -2195,7 +1562,7 @@ mod tests {
 
     #[test]
     fn read_record_no_headers_before() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader(data);
@@ -2227,7 +1594,7 @@ mod tests {
 
     #[test]
     fn read_record_no_headers_after() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader(data);
@@ -2255,73 +1622,10 @@ mod tests {
         });
     }
 
-    #[test]
-    fn seek() {
-        task::block_on(async {
-            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
-            rdr.seek(newpos(18, 3, 2)).await.unwrap();
-
-            let mut rec = StringRecord::new();
-
-            assert_eq!(18, rdr.position().byte());
-            assert!(rdr.read_record(&mut rec).await.unwrap());
-            assert_eq!(3, rec.len());
-            assert_eq!("d", &rec[0]);
-
-            assert_eq!(24, rdr.position().byte());
-            assert_eq!(4, rdr.position().line());
-            assert_eq!(3, rdr.position().record());
-            assert!(rdr.read_record(&mut rec).await.unwrap());
-            assert_eq!(3, rec.len());
-            assert_eq!("g", &rec[0]);
-
-            assert!(!rdr.read_record(&mut rec).await.unwrap());
-        });
-    }
-
-    // Test that we can read headers after seeking even if the headers weren't
-    // explicit read before seeking.
-    #[test]
-    fn seek_headers_after() {
-        task::block_on(async {
-            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
-            rdr.seek(newpos(18, 3, 2)).await.unwrap();
-            assert_eq!(rdr.headers().await.unwrap(), vec!["foo", "bar", "baz"]);
-        });
-    }
-
-    // Test that we can read headers after seeking if the headers were read
-    // before seeking.
-    #[test]
-    fn seek_headers_before_after() {
-        task::block_on(async {
-            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
-            let headers = rdr.headers().await.unwrap().clone();
-            rdr.seek(newpos(18, 3, 2)).await.unwrap();
-            assert_eq!(&headers, rdr.headers().await.unwrap());
-        });
-    }
-
-    // Test that even if we didn't read headers before seeking, if we seek to
-    // the current byte offset, then no seeking is done and therefore we can
-    // still read headers after seeking.
-    #[test]
-    fn seek_headers_no_actual_seek() {
-        task::block_on(async {
-            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
-            rdr.seek(Position::new()).await.unwrap();
-            assert_eq!("foo", &rdr.headers().await.unwrap()[0]);
-        });
-    }
-
     // Test that position info is reported correctly in absence of headers.
     #[test]
     fn positions_no_headers() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
                 .from_reader("a,b,c\nx,y,z".as_bytes())
@@ -2340,40 +1644,25 @@ mod tests {
     }
 
     // Test that position info is reported correctly with headers.
-    // TODO: Remove debug, restore to original
     #[test]
     fn positions_headers() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                // .has_headers(true)
+                .has_headers(true)
                 .from_reader("a,b,c\nx,y,z".as_bytes())
                 .into_records();
 
-            // let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
-            let pos = rdr.next().await;
-            dbg!(&pos);
-            let pos = rdr.next().await;
-            dbg!(&pos);
-            let pos1 = pos.unwrap();
-            dbg!(&pos1);
-            let pos2 = pos1.unwrap();
-            dbg!(&pos2);
-            let pos3 = pos2.position();
-            dbg!(&pos3);
-            let pos4 = pos3.unwrap();
-            dbg!(&pos4);
-            // let pos5 = pos4.clone();
-            assert_eq!(pos4.byte(), 6);
-            assert_eq!(pos4.line(), 2);
-            assert_eq!(pos4.record(), 1);
+            let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
+            assert_eq!(pos.byte(), 6);
+            assert_eq!(pos.line(), 2);
+            assert_eq!(pos.record(), 1);
         });
     }
 
     // Test that reading headers on empty data yields an empty record.
     #[test]
     fn headers_on_empty_data() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let mut rdr = AsyncReaderBuilder::new().from_reader("".as_bytes());
             let r = rdr.byte_headers().await.unwrap();
             assert_eq!(r.len(), 0);
@@ -2383,7 +1672,7 @@ mod tests {
     // Test that reading the first record on empty data works.
     #[test]
     fn no_headers_on_empty_data() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let mut rdr =
             AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
             assert_eq!(count(rdr.records()).await, 0);
@@ -2394,7 +1683,7 @@ mod tests {
     // we've tried to read headers before hand.
     #[test]
     fn no_headers_on_empty_data_after_headers() {
-        task::block_on(async {
+        Runtime::new().unwrap().block_on(async {
             let mut rdr =
                 AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
             assert_eq!(rdr.headers().await.unwrap().len(), 0);

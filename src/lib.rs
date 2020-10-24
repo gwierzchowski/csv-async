@@ -71,8 +71,14 @@ Concord,NH,United States,42605
 ```no_run
 use std::error::Error;
 use std::process;
+#[cfg(not(feature = "tokio"))]
 use futures::stream::StreamExt;
+#[cfg(not(feature = "tokio"))]
 use async_std::fs::File;
+#[cfg(feature = "tokio")]
+use tokio::stream::StreamExt;
+#[cfg(feature = "tokio")]
+use tokio::fs::File;
 
 async fn filter_by_region(region:&str, file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
     // Function reads CSV file that has column named "region"
@@ -107,8 +113,23 @@ async fn filter_by_region(region:&str, file_in:&str, file_out:&str) -> Result<()
     Ok(())
 }
 
+#[cfg(not(feature = "tokio"))]
 fn main() {
     async_std::task::block_on(async {
+        if let Err(err) = filter_by_region(
+            "MA",
+            "/tmp/all_regions.csv",
+            "/tmp/MA_only.csv"
+        ).await {
+            println!("error running filter_by_region: {}", err);
+            process::exit(1);
+        }
+    });
+}
+
+#[cfg(feature = "tokio")]
+fn main() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
         if let Err(err) = filter_by_region(
             "MA",
             "/tmp/all_regions.csv",
@@ -127,8 +148,16 @@ TODO: There are more examples in the [cookbook](cookbook/index.html).
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    
+    #[cfg(not(feature = "tokio"))]
     use futures::stream::StreamExt;
+    #[cfg(not(feature = "tokio"))]
     use async_std::fs::File;
+    
+    #[cfg(feature = "tokio")]
+    use tokio::stream::StreamExt;
+    #[cfg(feature = "tokio")]
+    use tokio::fs::File;
    
     async fn crete_async(file:&str) -> Result<(), Box<dyn Error>> {
         // Build the CSV reader and iterate over each record.
@@ -166,7 +195,17 @@ mod tests {
         let file_in  = "examples/data/smallpop.csv";
         let file_out = "examples/data/smallpop_out.csv";
 
+        #[cfg(not(feature = "tokio"))]
         async_std::task::block_on(async {
+            if let Err(err) = crete_async(file_in).await {
+                assert!(false, "error running crete_async: {}", err);
+            }
+            if let Err(err) = copy_async(file_in, file_out).await {
+                assert!(false, "error running copy_async: {}", err);
+            }
+        });
+        #[cfg(feature = "tokio")]
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
             if let Err(err) = crete_async(file_in).await {
                 assert!(false, "error running crete_async: {}", err);
             }
@@ -192,26 +231,50 @@ mod tests {
     }
 }
 
+mod byte_record;
+mod error;
+mod string_record;
+
+mod async_reader_builder;
+#[cfg(not(feature = "tokio"))]
+mod async_reader_futures;
+#[cfg(feature = "tokio")]
+mod async_reader_tokio;
+
+mod async_writer_builder;
+#[cfg(not(feature = "tokio"))]
+mod async_writer_futures;
+#[cfg(feature = "tokio")]
+mod async_writer_tokio;
+
+// pub mod cookbook;
+// pub mod tutorial;
+
 
 pub use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
 pub use crate::error::{
     Error, ErrorKind, FromUtf8Error, IntoInnerError, Result, Utf8Error,
 };
 pub use crate::string_record::{StringRecord, StringRecordIter};
-pub use crate::async_reader::{
-    AsyncReader, AsyncReaderBuilder, ByteRecordsIntoStream, ByteRecordsStream,
+
+pub use crate::async_reader_builder::AsyncReaderBuilder;
+#[cfg(not(feature = "tokio"))]
+pub use crate::async_reader_futures::{
+    AsyncReader, ByteRecordsIntoStream, ByteRecordsStream,
     StringRecordsIntoStream, StringRecordsStream,
 };
-pub use crate::async_writer::{AsyncWriter, AsyncWriterBuilder};
+#[cfg(feature = "tokio")]
+pub use crate::async_reader_tokio::{
+    AsyncReader, ByteRecordsIntoStream, ByteRecordsStream,
+    StringRecordsIntoStream, StringRecordsStream,
+};
 
-mod byte_record;
-mod error;
-mod string_record;
-mod async_reader;
-mod async_writer;
+pub use crate::async_writer_builder::AsyncWriterBuilder;
+#[cfg(not(feature = "tokio"))]
+pub use crate::async_writer_futures::AsyncWriter;
+#[cfg(feature = "tokio")]
+pub use crate::async_writer_tokio::AsyncWriter;
 
-// pub mod cookbook;
-// pub mod tutorial;
 
 /// The quoting style to use when writing CSV data.
 #[derive(Clone, Copy, Debug)]

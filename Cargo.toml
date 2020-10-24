@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing with support for async."
 edition = "2018"
@@ -8,10 +8,16 @@ keywords = ["csv", "comma", "parser", "delimited", "async"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# [features]
+# default = ["tokio"]
+
 [dependencies]
 bstr = "0.2"
 csv-core = "0.1"
 futures = "0.3"
+tokio = { version = "0.2", features = ["rt-core", "io-util", "stream", "fs"], optional = true }
+# Enable after more projects (e.g. actix) upgrade
+# tokio = { version = "0.3", features = ["rt"], optional = true }
 
 [dev-dependencies]
 async-std = "1.6"

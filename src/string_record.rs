@@ -4,12 +4,16 @@ use std::ops::{self, Range};
 use std::result;
 use std::str;
 
+#[cfg(not(feature = "tokio"))]
 use futures::io;
+
+#[cfg(feature = "tokio")]
+use tokio::io;
 
 use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
 use crate::error::{Error, ErrorKind, FromUtf8Error, Result};
 
-use crate::async_reader::AsyncReader;
+use crate::AsyncReader;
 
 /// A single CSV record stored as valid UTF-8 bytes.
 ///
