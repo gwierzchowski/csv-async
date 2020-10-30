@@ -49,7 +49,9 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-csv-async = "0.0.3"
+csv-async = "1.0.0"
+# or
+# csv-async = {version = "1.0.0", features = ["tokio"]}
 ```
 
 # Example

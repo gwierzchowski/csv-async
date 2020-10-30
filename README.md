@@ -4,6 +4,7 @@ Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-
 
 Some code is borrowed from `csv` crate (synchronized with version 1.1.3 - May 2020).
 This package shares CSV parsing routines with `csv` crate by means of using `csv-core` crate.
+Major version of this crate will be kept in sync with major version of `csv` with which it is API compatible.
 
 CSV files are being read or write by objects of types `AsyncReader` or `AsyncWriter`.
 Library user is responsible for performing conversion from and to string types, which are used by reader's and writer's API.
@@ -21,7 +22,7 @@ Features which can be enabled / disabled during program build.
 Enabling `tokio` feature allows user to use `tokio::fs::File` and makes `AsyncReader` (`AsyncWriter`) 
 to be based on `tokio::io::AsyncRead` (`tokio::io::AsyncWrite`). Currently this crate depends on tokio version 0.2.
 
-Without `tokio` feature, this crate depends only on `futures` crate and reader (writer) are based on traits `futures::io::AsyncRead` (`futures::io::AsyncWrite`), what allows allows user to use `async_std::fs::File`.
+Without `tokio` feature, this crate depends only on `futures` crate and reader (writer) are based on traits `futures::io::AsyncRead` (`futures::io::AsyncWrite`), what allows user to use `async_std::fs::File`.
 
 ## Example usage:  
 Sample input file:

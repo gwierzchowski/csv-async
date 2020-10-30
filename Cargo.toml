@@ -1,10 +1,14 @@
 [package]
 name = "csv-async"
-version = "0.0.4"
+version = "1.0.0"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing with support for async."
 edition = "2018"
-keywords = ["csv", "comma", "parser", "delimited", "async"]
+keywords = ["csv", "comma", "parser", "async"]
+categories = ["asynchronous", "encoding", "parser-implementations"]
+repository = "https://github.com/gwierzchowski/csv-async"
+license = "MIT"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
