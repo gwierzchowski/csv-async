@@ -1,4 +1,8 @@
 # csv-async
+[![crates.io](https://img.shields.io/crates/v/csv-async)](https://crates.io/crates/csv-async)
+[![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
+[![Version](https://img.shields.io/badge/rustc-1.45+-ab6000.svg)](https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html)
+
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate except that this crate does not support `serde`.
 
