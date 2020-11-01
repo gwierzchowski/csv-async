@@ -9,7 +9,7 @@ categories = ["asynchronous", "encoding", "parser-implementations"]
 repository = "https://github.com/gwierzchowski/csv-async"
 license = "MIT"
 readme = "README.md"
-exclude = [".gitignore", ".github/**"]
+exclude = [".gitignore", ".github/**", "codecov.yml"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

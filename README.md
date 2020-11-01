@@ -3,7 +3,8 @@
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
 [![Version](https://img.shields.io/badge/rustc-1.45+-ab6000.svg)](https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html)
 
-[![build status](https://github.com/gwierzchowski/csv-async/workflows/Build%20and%20test%20on%20Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions)
+[![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions)
+[![codecov](https://codecov.io/gh/gwierzchowski/csv-async/branch/master/graph/badge.svg)](https://codecov.io/gh/gwierzchowski/csv-async)
 
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate except that this crate does not support `serde`.
