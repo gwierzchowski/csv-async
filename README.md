@@ -3,7 +3,9 @@
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
 [![Version](https://img.shields.io/badge/rustc-1.45+-ab6000.svg)](https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html)
 
-[![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions)
+[![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3ALinux)
+[![build status](https://github.com/gwierzchowski/csv-async/workflows/Windows/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3AWindows)
+[![build status](https://github.com/gwierzchowski/csv-async/workflows/MacOS/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3AMacOS)
 [![codecov](https://codecov.io/gh/gwierzchowski/csv-async/branch/master/graph/badge.svg)](https://codecov.io/gh/gwierzchowski/csv-async)
 
 This is CSV library to use in asynchronous environment.
