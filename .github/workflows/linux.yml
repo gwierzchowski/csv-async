@@ -37,7 +37,7 @@ jobs:
     - name: Generate coverage file
       run: |
         which cargo-tarpaulin || cargo install cargo-tarpaulin
-        cargo tarpaulin --out Xml
+        cargo tarpaulin --out Xml --exclude-files *tokio*.rs
     - name: Upload to Codecov
       uses: codecov/codecov-action@v1
       with:
