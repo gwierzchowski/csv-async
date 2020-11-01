@@ -83,10 +83,9 @@ use tokio::stream::StreamExt;
 use tokio::fs::File;
 
 async fn filter_by_region(region:&str, file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
-    // Function reads CSV file that has column named "region"
-    // at second position (index = 1).
+    // Function reads CSV file that has column named "region" at second position (index = 1).
     // It writes to new file only rows with region equal to passed argument
-    // and remove region column.
+    // and removes region column.
     let mut rdr = csv_async::AsyncReader::from_reader(
         File::open(file_in).await?
     );

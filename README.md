@@ -3,6 +3,8 @@
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
 [![Version](https://img.shields.io/badge/rustc-1.45+-ab6000.svg)](https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html)
 
+[![build status](https://github.com/gwierzchowski/csv-async/workflows/Build%20and%20test%20on%20Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions)
+
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate except that this crate does not support `serde`.
 
@@ -48,10 +50,9 @@ use futures::stream::StreamExt;
 use async_std::fs::File;
 
 async fn filter_by_region(region:&str, file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
-    // Function reads CSV file that has column named "region"
-    // at second position (index = 1).
+    // Function reads CSV file that has column named "region" at second position (index = 1).
     // It writes to new file only rows with region equal to passed argument
-    // and remove region column.
+    // and removes region column.
     let mut rdr = csv_async::AsyncReader::from_reader(
         File::open(file_in).await?
     );
