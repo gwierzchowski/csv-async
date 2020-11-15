@@ -4,6 +4,8 @@ use std::io;
 use std::result;
 
 use crate::byte_record::{ByteRecord, Position};
+#[cfg(feature = "with_serde")]
+use crate::deserializer::DeserializeError;
 
 /// A type alias for `Result<T, csv_async::Error>`.
 pub type Result<T> = result::Result<T, Error>;
@@ -87,6 +89,18 @@ pub enum ErrorKind {
     /// are called on a CSV reader that was asked to `seek` before it parsed
     /// the first record.
     Seek,
+    /// An error of this kind occurs only when using the Serde serializer.
+    #[cfg(feature = "with_serde")]
+    Serialize(String),
+    /// An error of this kind occurs only when performing automatic
+    /// deserialization with serde.
+    #[cfg(feature = "with_serde")]
+    Deserialize {
+        /// The position of this error, if available.
+        pos: Option<Position>,
+        /// The deserialization error.
+        err: DeserializeError,
+    },
     /// Hints that destructuring should not be exhaustive.
     ///
     /// This enum may grow additional variants, so this makes sure clients
@@ -290,18 +304,25 @@ impl<W> IntoInnerError<W> {
         IntoInnerError { wtr: wtr, err: err }
     }
 
-    /// Returns the error which caused the call to `into_inner` to fail.
+    /// Returns reference to the error which caused the call to `into_inner` to fail.
     ///
     /// This error was returned when attempting to flush the internal buffer.
     pub fn error(&self) -> &io::Error {
         &self.err
     }
 
+    /// Returns the error which caused the call to `into_inner` to fail.
+    ///
+    /// This error was returned when attempting to flush the internal buffer.
+    pub fn into_error(self) -> io::Error {
+        self.err
+    }
+
     /// Returns the underlying writer which generated the error.
     ///
     /// The returned value can be used for error recovery, such as
     /// re-inspecting the buffer.
-    pub fn into_inner(self) -> W {
+    pub fn into_writer(self) -> W {
         self.wtr
     }
 }

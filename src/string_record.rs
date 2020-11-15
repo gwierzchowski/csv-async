@@ -10,10 +10,14 @@ use futures::io;
 #[cfg(feature = "tokio")]
 use tokio::io;
 
-use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
-use crate::error::{Error, ErrorKind, FromUtf8Error, Result};
+#[cfg(feature = "with_serde")]
+use serde::de::Deserialize;
 
-use crate::AsyncReader;
+use crate::async_readers::AsyncReaderImpl;
+use crate::byte_record::{ByteRecord, ByteRecordIter, Position};
+#[cfg(feature = "with_serde")]
+use crate::deserializer::deserialize_string_record;
+use crate::error::{Error, ErrorKind, FromUtf8Error, Result};
 
 /// A single CSV record stored as valid UTF-8 bytes.
 ///
@@ -522,6 +526,98 @@ impl StringRecord {
         self.0
     }
 
+    /// Deserialize this record.
+    ///
+    /// The `D` type parameter refers to the type that this record should be
+    /// deserialized into. The `'de` lifetime refers to the lifetime of the
+    /// `StringRecord`. The `'de` lifetime permits deserializing into structs
+    /// that borrow field data from this record.
+    ///
+    /// An optional `headers` parameter permits deserializing into a struct
+    /// based on its field names (corresponding to header values) rather than
+    /// the order in which the fields are defined.
+    ///
+    /// # Example: without headers
+    ///
+    /// This shows how to deserialize a single row into a struct based on the
+    /// order in which fields occur. This example also shows how to borrow
+    /// fields from the `StringRecord`, which results in zero allocation
+    /// deserialization.
+    ///
+    /// ```
+    /// use std::error::Error;
+    ///
+    /// use csv_async::StringRecord;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Row<'a> {
+    ///     city: &'a str,
+    ///     country: &'a str,
+    ///     population: u64,
+    /// }
+    ///
+    /// # fn main() { example().unwrap() }
+    /// fn example() -> Result<(), Box<dyn Error>> {
+    ///     let record = StringRecord::from(vec![
+    ///         "Boston", "United States", "4628910",
+    ///     ]);
+    ///
+    ///     let row: Row = record.deserialize(None)?;
+    ///     assert_eq!(row.city, "Boston");
+    ///     assert_eq!(row.country, "United States");
+    ///     assert_eq!(row.population, 4628910);
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Example: with headers
+    ///
+    /// This example is like the previous one, but shows how to deserialize
+    /// into a struct based on the struct's field names. For this to work,
+    /// you must provide a header row.
+    ///
+    /// This example also shows that you can deserialize into owned data
+    /// types (e.g., `String`) instead of borrowed data types (e.g., `&str`).
+    ///
+    /// ```
+    /// use std::error::Error;
+    ///
+    /// use csv_async::StringRecord;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     population: u64,
+    /// }
+    ///
+    /// # fn main() { example().unwrap() }
+    /// fn example() -> Result<(), Box<dyn Error>> {
+    ///     // Notice that the fields are not in the same order
+    ///     // as the fields in the struct!
+    ///     let header = StringRecord::from(vec![
+    ///         "country", "city", "population",
+    ///     ]);
+    ///     let record = StringRecord::from(vec![
+    ///         "United States", "Boston", "4628910",
+    ///     ]);
+    ///
+    ///     let row: Row = record.deserialize(Some(&header))?;
+    ///     assert_eq!(row.city, "Boston");
+    ///     assert_eq!(row.country, "United States");
+    ///     assert_eq!(row.population, 4628910);
+    ///     Ok(())
+    /// }
+    /// ```
+    #[cfg(feature = "with_serde")]
+    pub fn deserialize<'de, D: Deserialize<'de>>(
+        &'de self,
+        headers: Option<&'de StringRecord>,
+    ) -> Result<D> {
+        deserialize_string_record(self, headers)
+    }
     
     /// A safe function for reading CSV data into a `StringRecord`.
     ///
@@ -529,7 +625,7 @@ impl StringRecord {
     #[inline(always)]
     pub(crate) async fn read<R: io::AsyncRead + std::marker::Unpin>(
         &mut self,
-        rdr: &mut AsyncReader<R>,
+        rdr: &mut AsyncReaderImpl<R>,
     ) -> Result<bool> {
         // SAFETY: This code is critical to upholding the safety of other code
         // blocks in this module. Namely, after calling `read_byte_record`,

@@ -1,20 +1,19 @@
-use std::future::Future;
-use std::pin::Pin;
-use std::result;
-use std::task::{Context, Poll};
+use futures::io;
+use serde::de::DeserializeOwned;
 
-use futures::io::{self, AsyncBufRead, AsyncSeekExt};
-use futures::stream::Stream;
-use csv_core::{Reader as CoreReader};
-
-use crate::{AsyncReaderBuilder, Trim};
+use crate::AsyncReaderBuilder;
 use crate::byte_record::{ByteRecord, Position};
-use crate::error::{Error, ErrorKind, Result, Utf8Error};
+use crate::error::Result;
 use crate::string_record::StringRecord;
+use super::{
+    AsyncReaderImpl,
+    DeserializeRecordsStream, DeserializeRecordsIntoStream,
+    DeserializeRecordsStreamPos, DeserializeRecordsIntoStreamPos,
+};
 
 
 impl AsyncReaderBuilder {
-    /// Build a CSV parser from this configuration that reads data from `rdr`.
+    /// Build a CSV `serde` deserializer from this configuration that reads data from `rdr`.
     ///
     /// Note that the CSV reader is buffered automatically, so you should not
     /// wrap `rdr` in a buffered reader like `io::BufReader`.
@@ -24,7 +23,15 @@ impl AsyncReaderBuilder {
     /// ```
     /// use std::error::Error;
     /// use futures::stream::StreamExt;
+    /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
+    /// 
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     pop: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -33,113 +40,62 @@ impl AsyncReaderBuilder {
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new().from_reader(data.as_bytes());
-    ///     let mut records = rdr.into_records();
+    ///     let mut rdr = AsyncReaderBuilder::new().create_deserializer(data.as_bytes());
+    ///     let mut records = rdr.into_deserialize::<Row>();
     ///     while let Some(record) = records.next().await {
     ///         println!("{:?}", record?);
     ///     }
     ///     Ok(())
     /// }
     /// ```
-    pub fn from_reader<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncReader<R> {
-        AsyncReader::new(self, rdr)
+    pub fn create_deserializer<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncDeserializer<R> {
+        AsyncDeserializer::new(self, rdr)
     }
 }
 
-#[derive(Debug)]
-pub struct ReaderState {
-    /// When set, this contains the first row of any parsed CSV data.
-    ///
-    /// This is always populated, regardless of whether `has_headers` is set.
-    headers: Option<Headers>,
-    /// When set, the first row of parsed CSV data is excluded from things
-    /// that read records, like iterators and `read_record`.
-    has_headers: bool,
-    /// When set, there is no restriction on the length of records. When not
-    /// set, every record must have the same number of fields, or else an error
-    /// is reported.
-    flexible: bool,
-    trim: Trim,
-    /// The number of fields in the first record parsed.
-    first_field_count: Option<u64>,
-    /// The current position of the parser.
-    ///
-    /// Note that this position is only observable by callers at the start
-    /// of a record. More granular positions are not supported.
-    cur_pos: Position,
-    /// Whether the first record has been read or not.
-    first: bool,
-    /// Whether the reader has been seeked or not.
-    seeked: bool,
-    /// Whether EOF of the underlying reader has been reached or not.
-    eof: bool,
-}
-
-/// Headers encapsulates any data associated with the headers of CSV data.
+/// A already configured CSV `serde` deserializer.
 ///
-/// The headers always correspond to the first row.
-#[derive(Debug)]
-struct Headers {
-    /// The header, as raw bytes.
-    byte_record: ByteRecord,
-    /// The header, as valid UTF-8 (or a UTF-8 error).
-    string_record: result::Result<StringRecord, Utf8Error>,
-}
-
-impl ReaderState {
-    #[inline(always)]
-    fn add_record(&mut self, record: &ByteRecord) -> Result<()> {
-        let i = self.cur_pos.record();
-        self.cur_pos.set_record(i.checked_add(1).unwrap());
-        if !self.flexible {
-            match self.first_field_count {
-                None => self.first_field_count = Some(record.len() as u64),
-                Some(expected) => {
-                    if record.len() as u64 != expected {
-                        return Err(Error::new(ErrorKind::UnequalLengths {
-                            pos: record.position().map(Clone::clone),
-                            expected_len: expected,
-                            len: record.len() as u64,
-                        }));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-/// A already configured CSV reader.
-///
-/// A CSV reader takes as input CSV data and transforms that into standard Rust
+/// A CSV deserializer takes as input CSV data and transforms that into standard Rust
 /// values. The reader reads CSV data is as a sequence of records,
-/// where a record is a sequence of fields and each field is a string.
+/// where a record is either a sequence of string fields or structure with derived 
+/// `serde::Deserialize` interface.
 ///
 /// # Configuration
 ///
-/// A CSV reader has a couple convenient constructor methods like `from_path`
-/// and `from_reader`. However, if you want to configure the CSV reader to use
+/// A CSV deserializer has convenient constructor method `from_reader`.
+/// and `from_reader`. However, if you want to configure the CSV deserializer to use
 /// a different delimiter or quote character (among many other things), then
-/// you should use a [`ReaderBuilder`](struct.ReaderBuilder.html) to construct
-/// a `Reader`. For example, to change the field delimiter:
+/// you should use a [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html) to construct
+/// a `AsyncDeserializer`. For example, to change the field delimiter:
 ///
 /// ```
 /// use std::error::Error;
 /// use futures::stream::StreamExt;
+/// use serde::Deserialize;
 /// use csv_async::AsyncReaderBuilder;
+/// 
+/// #[derive(Debug, Deserialize, Eq, PartialEq)]
+/// struct Row {
+///     city: String,
+///     country: String,
+///     pop: u64,
+/// }
 ///
 /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
 /// async fn example() -> Result<(), Box<dyn Error>> {
-///     let data = "\
-/// city;country;pop
-/// Boston;United States;4628910
-/// ";
+///     let data = indoc::indoc! {"
+///         city;country;pop
+///         Boston;United States;4628910
+///     "};
 ///     let mut rdr = AsyncReaderBuilder::new()
 ///         .delimiter(b';')
-///         .from_reader(data.as_bytes());
+///         .create_deserializer(data.as_bytes());
 ///
-///     let mut records = rdr.records();
-///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+///     let mut records = rdr.deserialize::<Row>();
+///     assert_eq!(records.next().await.unwrap()?,
+///                Row {city: "Boston".to_string(), 
+///                     country: "United States".to_string(), 
+///                     pop: 4628910 });
 ///     Ok(())
 /// }
 /// ```
@@ -177,74 +133,16 @@ impl ReaderState {
 /// For more details on the precise semantics of errors, see the
 /// [`Error`](enum.Error.html) type.
 #[derive(Debug)]
-pub struct AsyncReader<R> {
-    /// The underlying CSV parser.
-    ///
-    /// We explicitly put this on the heap because CoreReader embeds an entire
-    /// DFA transition table, which along with other things, tallies up to
-    /// almost 500 bytes on the stack.
-    core: Box<CoreReader>,
-    /// The underlying reader.
-    rdr: io::BufReader<R>,
-    /// Various state tracking.
-    ///
-    /// There is more state embedded in the `CoreReader`.
-    state: ReaderState,
-}
+pub struct AsyncDeserializer<R>(AsyncReaderImpl<R>);
 
-#[must_use = "futures do nothing unless you `.await` or poll them"]
-struct FillBuf<'a, R: AsyncBufRead + ?Sized> {
-    reader: &'a mut R,
-}
-
-impl<R: AsyncBufRead + ?Sized + Unpin> Unpin for FillBuf<'_, R> {}
-
-impl<'a, R: AsyncBufRead + ?Sized + Unpin> FillBuf<'a, R> {
-    pub fn new(reader: &'a mut R) -> Self {
-        Self { reader }
-    }
-}
-
-impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
-    type Output = io::Result<usize>;
-    
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // let Self { reader } = &mut *self;
-        // match Pin::new(reader).poll_fill_buf(cx) {
-        match Pin::new(&mut *self.reader).poll_fill_buf(cx) {
-            Poll::Ready(res) => {
-                match res {
-                    Ok(res) => Poll::Ready(Ok(res.len())),
-                    Err(e) => Poll::Ready(Err(e))
-                }
-            },
-            Poll::Pending => Poll::Pending
-        }
-    }
-} 
-
-impl<'r, R> AsyncReader<R>
+impl<'r, R> AsyncDeserializer<R>
 where
     R: io::AsyncRead + std::marker::Unpin + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
-    fn new(builder: &AsyncReaderBuilder, rdr: R) -> AsyncReader<R> {
-        AsyncReader {
-            core: Box::new(builder.get_core_builder_ref().build()),
-            rdr: io::BufReader::with_capacity(builder.get_buffer_capacity(), rdr),
-            state: ReaderState {
-                headers: None,
-                has_headers: builder.get_headers_presence(),
-                flexible: builder.is_flexible(),
-                trim: builder.get_trim_option(),
-                first_field_count: None,
-                cur_pos: Position::new(),
-                first: false,
-                seeked: false,
-                eof: false,
-            },
-        }
+    fn new(builder: &AsyncReaderBuilder, rdr: R) -> AsyncDeserializer<R> {
+        AsyncDeserializer(AsyncReaderImpl::new(builder, rdr))
     }
 
     /// Create a new CSV parser with a default configuration for the given
@@ -257,7 +155,15 @@ where
     /// ```
     /// use std::error::Error;
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    /// 
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     pop: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -266,156 +172,370 @@ where
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
-    ///     let mut records = rdr.into_records();
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
+    ///     let mut records = rdr.into_deserialize::<Row>();
     ///     while let Some(record) = records.next().await {
     ///         println!("{:?}", record?);
     ///     }
     ///     Ok(())
     /// }
     /// ```
-    pub fn from_reader(rdr: R) -> AsyncReader<R> {
-        AsyncReaderBuilder::new().from_reader(rdr)
+    #[inline]
+    pub fn from_reader(rdr: R) -> AsyncDeserializer<R> {
+        AsyncReaderBuilder::new().create_deserializer(rdr)
     }
 
-    /// Returns a borrowed iterator over all records as strings.
+    /// Returns a borrowed stream over deserialized records.
     ///
-    /// Each item yielded by this iterator is a `Result<StringRecord, Error>`.
+    /// Each item yielded by this stream is a `Result<D, Error>`.
     /// Therefore, in order to access the record, callers must handle the
-    /// possibility of error (typically with `try!` or `?`).
+    /// possibility of error (typically with `?`).
     ///
     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this does not include the first record.
+    /// default), then this does not include the first record. Additionally,
+    /// if `has_headers` is enabled, then deserializing into a struct will
+    /// automatically align the values in each row to the fields of a struct
+    /// based on the header row.
+    /// 
+    /// Frequently turbo-fish notation is needed while calling this function:
+    /// `rdr.deserialize::<RecordTyme>();`
     ///
     /// # Example
     ///
+    /// This shows how to deserialize CSV data into normal Rust structures. The
+    /// fields of the header row are used to match up the values in each row
+    /// to the fields of the struct.
+    ///
     /// ```
     /// use std::error::Error;
+    ///
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     #[serde(rename = "popcount")]
+    ///     population: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
-    /// city,country,pop
+    /// city,country,popcount
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
-    ///     let mut records = rdr.records();
-    ///     while let Some(record) = records.next().await {
-    ///         println!("{:?}", record?);
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
+    ///     let mut iter = rdr.deserialize();
+    ///
+    ///     if let Some(result) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             city: "Boston".to_string(),
+    ///             country: "United States".to_string(),
+    ///             population: 4628910,
+    ///         });
+    ///         Ok(())
+    ///     } else {
+    ///         Err(From::from("expected at least one record but got none"))
     ///     }
-    ///     Ok(())
     /// }
     /// ```
-    pub fn records(&mut self) -> StringRecordsStream<R> {
-        StringRecordsStream::new(self)
-    }
-
-    /// Returns an owned iterator over all records as strings.
     ///
-    /// Each item yielded by this iterator is a `Result<StringRecord, Error>`.
-    /// Therefore, in order to access the record, callers must handle the
-    /// possibility of error (typically with `try!` or `?`).
+    /// # Rules
     ///
-    /// This is mostly useful when you want to return a CSV iterator or store
-    /// it somewhere.
+    /// For the most part, any Rust type that maps straight-forwardly to a CSV
+    /// record is supported. This includes maps, structs, tuples and tuple
+    /// structs. Other Rust types, such as `Vec`s, arrays, and enums have
+    /// a more complicated story. In general, when working with CSV data, one
+    /// should avoid *nested sequences* as much as possible.
     ///
-    /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this does not include the first record.
+    /// Maps, structs, tuples and tuple structs map to CSV records in a simple
+    /// way. Tuples and tuple structs decode their fields in the order that
+    /// they are defined. Structs will do the same only if `has_headers` has
+    /// been disabled using [`ReaderBuilder`](struct.ReaderBuilder.html),
+    /// otherwise, structs and maps are deserialized based on the fields
+    /// defined in the header row. (If there is no header row, then
+    /// deserializing into a map will result in an error.)
     ///
-    /// # Example
+    /// Nested sequences are supported in a limited capacity. Namely, they
+    /// are flattened. As a result, it's often useful to use a `Vec` to capture
+    /// a "tail" of fields in a record:
     ///
     /// ```
     /// use std::error::Error;
+    ///
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncReaderBuilder;
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     label: String,
+    ///     values: Vec<i32>,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States,4628910
-    /// ";
-    ///     let rdr = AsyncReader::from_reader(data.as_bytes());
-    ///     let mut records = rdr.into_records();
-    ///     while let Some(record) = records.next().await {
-    ///         println!("{:?}", record?);
+    ///     let data = "foo,1,2,3";
+    ///     let mut rdr = AsyncReaderBuilder::new()
+    ///         .has_headers(false)
+    ///         .create_deserializer(data.as_bytes());
+    ///     let mut iter = rdr.deserialize();
+    ///
+    ///     if let Some(result) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             label: "foo".to_string(),
+    ///             values: vec![1, 2, 3],
+    ///         });
+    ///         Ok(())
+    ///     } else {
+    ///         Err(From::from("expected at least one record but got none"))
     ///     }
-    ///     Ok(())
     /// }
     /// ```
-    pub fn into_records(self) -> StringRecordsIntoStream<'r, R> {
-        StringRecordsIntoStream::new(self)
-    }
-
-    /// Returns a borrowed iterator over all records as raw bytes.
     ///
-    /// Each item yielded by this iterator is a `Result<ByteRecord, Error>`.
-    /// Therefore, in order to access the record, callers must handle the
-    /// possibility of error (typically with `try!` or `?`).
+    /// In the above example, adding another field to the `Row` struct after
+    /// the `values` field will result in a deserialization error. This is
+    /// because the deserializer doesn't know when to stop reading fields
+    /// into the `values` vector, so it will consume the rest of the fields in
+    /// the record leaving none left over for the additional field.
     ///
-    /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this does not include the first record.
-    ///
-    /// # Example
+    /// Finally, simple enums in Rust can be deserialized as well. Namely,
+    /// enums must either be variants with no arguments or variants with a
+    /// single argument. Variants with no arguments are deserialized based on
+    /// which variant name the field matches. Variants with a single argument
+    /// are deserialized based on which variant can store the data. The latter
+    /// is only supported when using "untagged" enum deserialization. The
+    /// following example shows both forms in action:
     ///
     /// ```
     /// use std::error::Error;
+    ///
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    ///
+    /// #[derive(Debug, Deserialize, PartialEq)]
+    /// struct Row {
+    ///     label: Label,
+    ///     value: Number,
+    /// }
+    ///
+    /// #[derive(Debug, Deserialize, PartialEq)]
+    /// #[serde(rename_all = "lowercase")]
+    /// enum Label {
+    ///     Celsius,
+    ///     Fahrenheit,
+    /// }
+    ///
+    /// #[derive(Debug, Deserialize, PartialEq)]
+    /// #[serde(untagged)]
+    /// enum Number {
+    ///     Integer(i64),
+    ///     Float(f64),
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States,4628910
+    /// label,value
+    /// celsius,22.2222
+    /// fahrenheit,72
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
-    ///     let mut iter = rdr.byte_records();
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
+    ///     let mut iter = rdr.deserialize();
+    ///
+    ///     // Read the first record.
+    ///     if let Some(result) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             label: Label::Celsius,
+    ///             value: Number::Float(22.2222),
+    ///         });
+    ///     } else {
+    ///         return Err(From::from(
+    ///             "expected at least two records but got none"));
+    ///     }
+    ///
+    ///     // Read the second record.
+    ///     if let Some(result) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             label: Label::Fahrenheit,
+    ///             value: Number::Integer(72),
+    ///         });
+    ///         Ok(())
+    ///     } else {
+    ///         Err(From::from(
+    ///             "expected at least two records but got only one"))
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn deserialize<D:'r>(&'r mut self) -> DeserializeRecordsStream<'r, R, D>
+    where
+        D: DeserializeOwned,
+    {
+        DeserializeRecordsStream::new(& mut self.0)
+    }
+
+    /// Returns a borrowed stream over pairs of deserialized record and position 
+    /// in reader stream before record read.
+    ///
+    /// Each item yielded by this stream is a `(Result<D, Error>, Position)`.
+    /// Therefore, in order to access the record, callers must handle the
+    /// possibility of error (typically with `?`).
+    /// 
+    /// Frequently turbo-fish notation is needed while calling this function:
+    /// `rdr.deserialize_with_pos::<RecordTyme>();`
+    ///
+    /// # Example
+    ///
+    /// This shows how to deserialize CSV data into normal Rust structures. The
+    /// fields of the header row are used to match up the values in each row
+    /// to the fields of the struct.
+    ///
+    /// ```
+    /// use std::error::Error;
+    ///
+    /// use futures::stream::StreamExt;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     population: u64,
+    /// }
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,population
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
+    ///     let mut iter = rdr.deserialize_with_pos();
+    ///
+    ///     if let Some((result, pos)) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             city: "Boston".to_string(),
+    ///             country: "United States".to_string(),
+    ///             population: 4628910,
+    ///         });
+    ///         assert_eq!(pos.byte(), 24);
+    ///         assert_eq!(pos.line(), 2);
+    ///         assert_eq!(pos.record(), 1);
+    ///     } else {
+    ///         return Err(From::from("expected at least one record but got none"));
+    ///     }
+    ///     if let Some((result, pos)) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             city: "Concord".to_string(),
+    ///             country: "United States".to_string(),
+    ///             population: 42695,
+    ///         });
+    ///         assert_eq!(pos.byte(), 53);
+    ///         assert_eq!(pos.line(), 3);
+    ///         assert_eq!(pos.record(), 2);
+    ///     } else {
+    ///         return Err(From::from("expected at least two records but got one only"));
+    ///     }
     ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
     /// ```
-    pub fn byte_records(&mut self) -> ByteRecordsStream<R> {
-        ByteRecordsStream::new(self)
+    #[inline]
+    pub fn deserialize_with_pos<D:'r>(&'r mut self) -> DeserializeRecordsStreamPos<'r, R, D>
+    where
+        D: DeserializeOwned,
+    {
+        DeserializeRecordsStreamPos::new(& mut self.0)
     }
 
-    /// Returns an owned iterator over all records as raw bytes.
+    /// Returns a owned stream over deserialized records.
     ///
-    /// Each item yielded by this iterator is a `Result<ByteRecord, Error>`.
+    /// Each item yielded by this stream is a `Result<D, Error>`.
     /// Therefore, in order to access the record, callers must handle the
-    /// possibility of error (typically with `try!` or `?`).
-    ///
-    /// This is mostly useful when you want to return a CSV iterator or store
-    /// it somewhere.
+    /// possibility of error (typically with `?`).
     ///
     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this does not include the first record.
+    /// default), then this does not include the first record. Additionally,
+    /// if `has_headers` is enabled, then deserializing into a struct will
+    /// automatically align the values in each row to the fields of a struct
+    /// based on the header row.
+    /// 
+    /// Frequently turbo-fish notation is needed while calling this function:
+    /// `rdr.into_deserialize::<RecordTyme>();`
     ///
     /// # Example
     ///
+    /// This shows how to deserialize CSV data into normal Rust structs. The
+    /// fields of the header row are used to match up the values in each row
+    /// to the fields of the struct.
+    ///
     /// ```
     /// use std::error::Error;
+    ///
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     #[serde(rename = "popcount")]
+    ///     population: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
-    /// city,country,pop
+    /// city,country,popcount
     /// Boston,United States,4628910
     /// ";
-    ///     let rdr = AsyncReader::from_reader(data.as_bytes());
-    ///     let mut iter = rdr.into_byte_records();
-    ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    ///     assert!(iter.next().await.is_none());
-    ///     Ok(())
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
+    ///     let mut iter = rdr.into_deserialize();
+    ///
+    ///     if let Some(result) = iter.next().await {
+    ///         let record: Row = result?;
+    ///         assert_eq!(record, Row {
+    ///             city: "Boston".to_string(),
+    ///             country: "United States".to_string(),
+    ///             population: 4628910,
+    ///         });
+    ///         Ok(())
+    ///     } else {
+    ///         Err(From::from("expected at least one record but got none"))
+    ///     }
     /// }
     /// ```
-    pub fn into_byte_records(self) -> ByteRecordsIntoStream<'r, R> {
-        ByteRecordsIntoStream::new(self)
+    #[inline]
+    pub fn into_deserialize<D:'r>(self) -> DeserializeRecordsIntoStream<'r, R, D>
+    where
+        D: DeserializeOwned,
+    {
+        DeserializeRecordsIntoStream::new(self.0)
+    }
+
+    /// Returns a owned stream over pairs of deserialized record and position 
+    /// in reader stream before record read.
+    ///
+    #[inline]
+    pub fn into_deserialize_with_pos<D:'r>(self) -> DeserializeRecordsIntoStreamPos<'r, R, D>
+    where
+        D: DeserializeOwned,
+    {
+        DeserializeRecordsIntoStreamPos::new(self.0)
     }
 
     /// Returns a reference to the first row read by this parser.
@@ -440,7 +560,15 @@ where
     /// ```
     /// use std::error::Error;
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
+    /// 
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     pop: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -448,7 +576,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///
     ///     // We can read the headers before iterating.
     ///     {
@@ -460,8 +588,11 @@ where
     ///     }
     ///
     ///     {
-    ///     let mut records = rdr.records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     let mut records = rdr.deserialize::<Row>();
+    ///     assert_eq!(records.next().await.unwrap()?, 
+    ///                Row {city: "Boston".to_string(), 
+    ///                     country: "United States".to_string(), 
+    ///                     pop: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
     ///
@@ -471,20 +602,9 @@ where
     ///     Ok(())
     /// }
     /// ```
+    #[inline]
     pub async fn headers(&mut self) -> Result<&StringRecord> {
-        if self.state.headers.is_none() {
-            let mut record = ByteRecord::new();
-            self.read_byte_record_impl(&mut record).await?;
-            self.set_headers_impl(Err(record));
-        }
-        let headers = self.state.headers.as_ref().unwrap();
-        match headers.string_record {
-            Ok(ref record) => Ok(record),
-            Err(ref err) => Err(Error::new(ErrorKind::Utf8 {
-                pos: headers.byte_record.position().map(Clone::clone),
-                err: err.clone(),
-            })),
-        }
+        self.0.headers().await
     }
 
     /// Returns a reference to the first row read by this parser as raw bytes.
@@ -508,15 +628,24 @@ where
     /// ```
     /// use std::error::Error;
     /// use futures::stream::StreamExt;
-    /// use csv_async::AsyncReader;
+    /// use serde::Deserialize;
+    /// use csv_async::AsyncDeserializer;
     ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     #[serde(rename = "pop")]
+    ///     population: u64,
+    /// }
+    /// 
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let data = "\
-    /// city,country,pop
-    /// Boston,United States,4628910
-    /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let data = indoc::indoc! {"
+    ///         city,country,pop
+    ///         Boston,United States,4628910
+    ///     "};
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///
     ///     // We can read the headers before iterating.
     ///     {
@@ -528,8 +657,11 @@ where
     ///     }
     ///
     ///     {
-    ///     let mut records = rdr.byte_records();
-    ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
+    ///     let mut records = rdr.deserialize::<Row>();
+    ///     assert_eq!(records.next().await.unwrap()?, 
+    ///                Row {city: "Boston".to_string(), 
+    ///                     country: "United States".to_string(), 
+    ///                     population: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
     ///
@@ -539,13 +671,9 @@ where
     ///     Ok(())
     /// }
     /// ```
+    #[inline]
     pub async fn byte_headers(&mut self) -> Result<&ByteRecord> {
-        if self.state.headers.is_none() {
-            let mut record = ByteRecord::new();
-            self.read_byte_record_impl(&mut record).await?;
-            self.set_headers_impl(Err(record));
-        }
-        Ok(&self.state.headers.as_ref().unwrap().byte_record)
+        self.0.byte_headers().await
     }
 
     /// Set the headers of this CSV parser manually.
@@ -558,7 +686,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use csv_async::{AsyncReader, StringRecord};
+    /// use csv_async::{AsyncDeserializer, StringRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -566,7 +694,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///
     ///     assert_eq!(rdr.headers().await?, vec!["city", "country", "pop"]);
     ///     rdr.set_headers(StringRecord::from(vec!["a", "b", "c"]));
@@ -575,8 +703,9 @@ where
     ///     Ok(())
     /// }
     /// ```
+    #[inline]
     pub fn set_headers(&mut self, headers: StringRecord) {
-        self.set_headers_impl(Ok(headers));
+        self.0.set_headers(headers);
     }
 
     /// Set the headers of this CSV parser manually as raw bytes.
@@ -589,7 +718,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use csv_async::{AsyncReader, ByteRecord};
+    /// use csv_async::{AsyncDeserializer, ByteRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -597,7 +726,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///
     ///     assert_eq!(rdr.byte_headers().await?, vec!["city", "country", "pop"]);
     ///     rdr.set_byte_headers(ByteRecord::from(vec!["a", "b", "c"]));
@@ -606,38 +735,9 @@ where
     ///     Ok(())
     /// }
     /// ```
+    #[inline]
     pub fn set_byte_headers(&mut self, headers: ByteRecord) {
-        self.set_headers_impl(Err(headers));
-    }
-
-    fn set_headers_impl(
-        &mut self,
-        headers: result::Result<StringRecord, ByteRecord>,
-    ) {
-        // If we have string headers, then get byte headers. But if we have
-        // byte headers, then get the string headers (or a UTF-8 error).
-        let (mut str_headers, mut byte_headers) = match headers {
-            Ok(string) => {
-                let bytes = string.clone().into_byte_record();
-                (Ok(string), bytes)
-            }
-            Err(bytes) => {
-                match StringRecord::from_byte_record(bytes.clone()) {
-                    Ok(str_headers) => (Ok(str_headers), bytes),
-                    Err(err) => (Err(err.utf8_error().clone()), bytes),
-                }
-            }
-        };
-        if self.state.trim.should_trim_headers() {
-            if let Ok(ref mut str_headers) = str_headers.as_mut() {
-                str_headers.trim();
-            }
-            byte_headers.trim();
-        }
-        self.state.headers = Some(Headers {
-            byte_record: byte_headers,
-            string_record: str_headers,
-        });
+        self.0.set_byte_headers(headers);
     }
 
     /// Read a single row into the given record. Returns false when no more
@@ -658,7 +758,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use csv_async::{AsyncReader, StringRecord};
+    /// use csv_async::{AsyncDeserializer, StringRecord};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -666,7 +766,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///     let mut record = StringRecord::new();
     ///
     ///     if rdr.read_record(&mut record).await? {
@@ -677,15 +777,9 @@ where
     ///     }
     /// }
     /// ```
+    #[inline]
     pub async fn read_record(&mut self, record: &mut StringRecord) -> Result<bool> {
-        let result = record.read(self).await;
-        // We need to trim again because trimming string records includes
-        // Unicode whitespace. (ByteRecord trimming only includes ASCII
-        // whitespace.)
-        if self.state.trim.should_trim_fields() {
-            record.trim();
-        }
-        result
+        self.0.read_record(record).await
     }
 
     /// Read a single row into the given byte record. Returns false when no
@@ -706,7 +800,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use csv_async::{ByteRecord, AsyncReader};
+    /// use csv_async::{ByteRecord, AsyncDeserializer};
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -714,7 +808,7 @@ where
     /// city,country,pop
     /// Boston,United States,4628910
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncDeserializer::from_reader(data.as_bytes());
     ///     let mut record = ByteRecord::new();
     ///
     ///     if rdr.read_byte_record(&mut record).await? {
@@ -725,104 +819,20 @@ where
     ///     }
     /// }
     /// ```
-    pub async fn read_byte_record(
-        &mut self,
-        record: &mut ByteRecord,
-    ) -> Result<bool> {
-        if !self.state.seeked && !self.state.has_headers && !self.state.first {
-            // If the caller indicated "no headers" and we haven't yielded the
-            // first record yet, then we should yield our header row if we have
-            // one.
-            if let Some(ref headers) = self.state.headers {
-                self.state.first = true;
-                record.clone_from(&headers.byte_record);
-                if self.state.trim.should_trim_fields() {
-                    record.trim();
-                }
-                return Ok(!record.is_empty());
-            }
-        }
-        let ok = self.read_byte_record_impl(record).await?;
-        self.state.first = true;
-        if !self.state.seeked && self.state.headers.is_none() {
-            self.set_headers_impl(Err(record.clone()));
-            // If the end user indicated that we have headers, then we should
-            // never return the first row. Instead, we should attempt to
-            // read and return the next one.
-            if self.state.has_headers {
-                let result = self.read_byte_record_impl(record).await;
-                if self.state.trim.should_trim_fields() {
-                    record.trim();
-                }
-                return result;
-            }
-        } else if self.state.trim.should_trim_fields() {
-            record.trim();
-        }
-        Ok(ok)
+    #[inline]
+    pub async fn read_byte_record(&mut self, record: &mut ByteRecord) -> Result<bool> {
+        self.0.read_byte_record(record).await
     }
 
-    /// Read a byte record from the underlying CSV reader, without accounting
-    /// for headers.
-    #[inline(always)]
-    async fn read_byte_record_impl(
-        &mut self,
-        record: &mut ByteRecord,
-    ) -> Result<bool> {
-        use csv_core::ReadRecordResult::*;
-
-        record.clear();
-        record.set_position(Some(self.state.cur_pos.clone()));
-        if self.state.eof {
-            return Ok(false);
-        }
-        let (mut outlen, mut endlen) = (0, 0);
-        // let mut buf = String::new();
-        loop {
-            let (res, nin, nout, nend) = {
-                FillBuf::new(&mut self.rdr).await?;
-                let (fields, ends) = record.as_parts();
-                self.core.read_record(
-                    self.rdr.buffer(),
-                    &mut fields[outlen..],
-                    &mut ends[endlen..],
-                )
-            };
-            Pin::new(&mut self.rdr).consume(nin);
-            let byte = self.state.cur_pos.byte();
-            self.state
-                .cur_pos
-                .set_byte(byte + nin as u64)
-                .set_line(self.core.line());
-            outlen += nout;
-            endlen += nend;
-            match res {
-                InputEmpty => continue,
-                OutputFull => {
-                    record.expand_fields();
-                    continue;
-                }
-                OutputEndsFull => {
-                    record.expand_ends();
-                    continue;
-                }
-                Record => {
-                    record.set_len(endlen);
-                    self.state.add_record(record)?;
-                    return Ok(true);
-                }
-                End => {
-                    self.state.eof = true;
-                    return Ok(false);
-                }
-            }
-        }
-    }
-
-    /// Return the current position of this CSV reader.
+    /// Return the current position of this CSV deserializer.
+    /// 
+    /// Because of borrowing rules this function can only be used when there is no
+    /// alive deserializer (which borrows mutable reader).
+    /// To know position during deserialization, `deserialize_with_pos` should be
+    /// used as shown in below example.
     ///
     /// The byte offset in the position returned can be used to `seek` this
-    /// reader. In particular, seeking to a position returned here on the same
+    /// deserializer. In particular, seeking to a position returned here on the same
     /// data will result in parsing the same subsequent record.
     ///
     /// # Example: reading the position
@@ -831,7 +841,15 @@ where
     /// use std::error::Error;
     /// use futures::io;
     /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReader, Position};
+    /// use serde::Deserialize;
+    /// use csv_async::{AsyncDeserializer, Position};
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     popcount: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -840,35 +858,35 @@ where
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let rdr = AsyncReader::from_reader(io::Cursor::new(data));
-    ///     let mut iter = rdr.into_records();
-    ///     let mut pos = Position::new();
-    ///     loop {
-    ///         let next = iter.next().await;
-    ///         if let Some(next) = next {
-    ///             pos = next?.position().expect("Cursor should be at some valid position").clone();
-    ///         } else {
-    ///             break;
+    ///     let mut rdr = AsyncDeserializer::from_reader(io::Cursor::new(data));
+    ///     let mut iter = rdr.deserialize_with_pos::<Row>();
+    ///     let mut pos_at_boston = Position::new();
+    ///     while let Some((rec, pos)) = iter.next().await {
+    ///         if rec?.city == "Boston" {
+    ///             pos_at_boston = pos;
     ///         }
     ///     }
-    ///
-    ///     // `pos` should now be the position immediately before the last
-    ///     // record.
-    ///     assert_eq!(pos.byte(), 51);
-    ///     assert_eq!(pos.line(), 3);
-    ///     assert_eq!(pos.record(), 2);
+    ///     drop(iter); // releases rdr borrow by iter
+    ///     let pos_at_end = rdr.position();
+    /// 
+    ///     assert_eq!(pos_at_boston.byte(),  22);
+    ///     assert_eq!(pos_at_boston.line(),   2);
+    ///     assert_eq!(pos_at_boston.record(), 1);
+    ///     assert_eq!(pos_at_end.byte(),  79);
+    ///     assert_eq!(pos_at_end.line(),   4);
+    ///     assert_eq!(pos_at_end.record(), 3);
     ///     Ok(())
     /// }
     /// ```
     #[inline]
     pub fn position(&self) -> &Position {
-        &self.state.cur_pos
+        self.0.position()
     }
 
     /// Returns true if and only if this reader has been exhausted.
     ///
     /// When this returns true, no more records can be read from this reader
-    /// (unless it has been seeked to another position).
+    /// (unless it has been seek to another position).
     ///
     /// # Example
     ///
@@ -876,7 +894,15 @@ where
     /// use std::error::Error;
     /// use futures::io;
     /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReader, Position};
+    /// use serde::Deserialize;
+    /// use csv_async::{AsyncDeserializer, Position};
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     popcount: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -885,10 +911,10 @@ where
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let mut rdr = AsyncDeserializer::from_reader(io::Cursor::new(data));
     ///     assert!(!rdr.is_done());
     ///     {
-    ///         let mut records = rdr.records();
+    ///         let mut records = rdr.deserialize::<Row>();
     ///         while let Some(record) = records.next().await {
     ///             let _ = record?;
     ///         }
@@ -897,36 +923,41 @@ where
     ///     Ok(())
     /// }
     /// ```
+    #[inline]
     pub fn is_done(&self) -> bool {
-        self.state.eof
+        self.0.is_done()
     }
 
     /// Returns true if and only if this reader has been configured to
     /// interpret the first record as a header record.
+    #[inline]
     pub fn has_headers(&self) -> bool {
-        self.state.has_headers
+        self.0.has_headers()
     }
 
     /// Returns a reference to the underlying reader.
+    #[inline]
     pub fn get_ref(&self) -> &R {
-        self.rdr.get_ref()
+        self.0.get_ref()
     }
 
     /// Returns a mutable reference to the underlying reader.
+    #[inline]
     pub fn get_mut(&mut self) -> &mut R {
-        self.rdr.get_mut()
+        self.0.get_mut()
     }
 
     /// Unwraps this CSV reader, returning the underlying reader.
     ///
     /// Note that any leftover data inside this reader's internal buffer is
     /// lost.
+    #[inline]
     pub fn into_inner(self) -> R {
-        self.rdr.into_inner()
+        self.0.into_inner()
     }
 }
 
-impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
+impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncDeserializer<R> {
     /// Seeks the underlying reader to the position given.
     ///
     /// This comes with a few caveats:
@@ -956,7 +987,15 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     /// use std::error::Error;
     /// use futures::io;
     /// use futures::stream::StreamExt;
-    /// use csv_async::{AsyncReader, Position};
+    /// use serde::Deserialize;
+    /// use csv_async::{AsyncDeserializer, Position};
+    ///
+    /// #[derive(Debug, Deserialize, Eq, PartialEq)]
+    /// struct Row {
+    ///     city: String,
+    ///     country: String,
+    ///     popcount: u64,
+    /// }
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
@@ -965,47 +1004,32 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
-    ///     let mut pos = Position::new();
-    ///     {
-    ///     let mut records = rdr.records();
-    ///     loop {
-    ///         let next = records.next().await;
-    ///         if let Some(next) = next {
-    ///             pos = next?.position().expect("Cursor should be at some valid position").clone();
-    ///         } else {
-    ///             break;
+    ///     let mut rdr = AsyncDeserializer::from_reader(io::Cursor::new(data));
+    ///     let mut records = rdr.deserialize_with_pos::<Row>();
+    ///     let mut pos_at_boston = Position::new();
+    ///     while let Some((rec, pos)) = records.next().await {
+    ///         if rec?.city == "Boston" {
+    ///             pos_at_boston = pos;
+    ///             // no break here - we are reading data to end
     ///         }
     ///     }
-    ///     }
+    ///     drop(records); // releases rdr borrowed by records
     ///
-    ///     {
-    ///     // Now seek the reader back to `pos`. This will let us read the
-    ///     // last record again.
-    ///     rdr.seek(pos).await?;
-    ///     let mut records = rdr.into_records();
-    ///     if let Some(result) = records.next().await {
-    ///         let record = result?;
-    ///         assert_eq!(record, vec!["Concord", "United States", "42695"]);
+    ///     // Now seek the reader back to `pos_at_boston`. This will let us read the
+    ///     // Boston's record again.
+    ///     rdr.seek(pos_at_boston).await?;
+    ///     let mut records = rdr.into_deserialize::<Row>();
+    ///     if let Some(rec) = records.next().await {
+    ///         assert_eq!(rec?.city, "Boston");
     ///         Ok(())
     ///     } else {
-    ///         Err(From::from("expected at least one record but got none"))
-    ///     }
+    ///         Err(From::from("After seek we should be before last record, but was at end of stream"))
     ///     }
     /// }
     /// ```
+    #[inline]
     pub async fn seek(&mut self, pos: Position) -> Result<()> {
-        self.byte_headers().await?;
-        self.state.seeked = true;
-        if pos.byte() == self.state.cur_pos.byte() {
-            return Ok(());
-        }
-        self.rdr.seek(io::SeekFrom::Start(pos.byte())).await?;
-        self.core.reset();
-        self.core.set_line(pos.line());
-        self.state.cur_pos = pos;
-        self.state.eof = false;
-        Ok(())
+        self.0.seek(pos).await
     }
 
     /// This is like `seek`, but provides direct control over how the seeking
@@ -1021,347 +1045,30 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     /// this returns an error associated with reading CSV data.
     ///
     /// Unlike `seek`, this will always cause an actual seek to be performed.
+    #[inline]
     pub async fn seek_raw(
         &mut self,
         seek_from: io::SeekFrom,
         pos: Position,
     ) -> Result<()> {
-        self.byte_headers().await?;
-        self.state.seeked = true;
-        self.rdr.seek(seek_from).await?;
-        self.core.reset();
-        self.core.set_line(pos.line());
-        self.state.cur_pos = pos;
-        self.state.eof = false;
-        Ok(())
+        self.0.seek_raw(seek_from, pos).await
     }
 }
 
-async fn read_record_borrowed<'r, R>(
-    rdr: &'r mut AsyncReader<R>,
-    mut rec: StringRecord,
-) -> (Option<Result<StringRecord>>, &'r mut AsyncReader<R>, StringRecord)
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    let result = match rdr.read_record(&mut rec).await {
-        Err(err) => Some(Err(err)),
-        Ok(true) => Some(Ok(rec.clone())),
-        Ok(false) => None,
-    };
-
-    (result, rdr, rec)
-}
-
-/// A borrowed iterator over records as strings.
-///
-/// The lifetime parameter `'r` refers to the lifetime of the underlying
-/// CSV `Reader`.
-pub struct StringRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    fut: Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = (
-                            Option<Result<StringRecord>>,
-                            &'r mut AsyncReader<R>,
-                            StringRecord,
-                        ),
-                    > + 'r,
-            >,
-        >,
-    >,
-}
-
-impl<'r, R> StringRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    fn new(rdr: &'r mut AsyncReader<R>) -> Self {
-        Self {
-            fut: Some(Pin::from(Box::new(read_record_borrowed(
-                rdr,
-                StringRecord::new(),
-            )))),
-        }
-    }
-}
-
-impl<'r, R> Stream for StringRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    type Item = Result<StringRecord>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<StringRecord>>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut = Some(Pin::from(Box::new(
-                        read_record_borrowed(rdr, rec),
-                    )));
-                } else {
-                    self.fut = None;
-                }
-
-                Poll::Ready(result)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-async fn read_record<R>(
-    mut rdr: AsyncReader<R>,
-    mut rec: StringRecord,
-) -> (Option<Result<StringRecord>>, AsyncReader<R>, StringRecord)
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    let result = match rdr.read_record(&mut rec).await {
-        Err(err) => Some(Err(err)),
-        Ok(true) => Some(Ok(rec.clone())),
-        Ok(false) => None,
-    };
-
-    (result, rdr, rec)
-}
-
-/// An owned iterator over records as strings.
-/// The lifetime parameter `'r` refers to the lifetime of the underlying
-/// CSV `Reader`.
-pub struct StringRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    fut: Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = (
-                            Option<Result<StringRecord>>,
-                            AsyncReader<R>,
-                            StringRecord,
-                        ),
-                    > + 'r,
-            >,
-        >,
-    >,
-}
-
-impl<'r, R> StringRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin + 'r
-{
-    fn new(rdr: AsyncReader<R>) -> Self {
-        Self {
-            fut: Some(Pin::from(Box::new(read_record(
-                rdr,
-                StringRecord::new(),
-            )))),
-        }
-    }
-}
-
-impl<'r, R> Stream for StringRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin + 'r
-{
-    type Item = Result<StringRecord>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<StringRecord>>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut =
-                        Some(Pin::from(Box::new(read_record(rdr, rec))));
-                } else {
-                    self.fut = None;
-                }
-
-                Poll::Ready(result)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-async fn read_byte_record_borrowed<'r, R>(
-    rdr: &'r mut AsyncReader<R>,
-    mut rec: ByteRecord,
-) -> (Option<Result<ByteRecord>>, &'r mut AsyncReader<R>, ByteRecord)
-where
-    R: io::AsyncRead + std::marker::Unpin,
-{
-    let result = match rdr.read_byte_record(&mut rec).await {
-        Err(err) => Some(Err(err)),
-        Ok(true) => Some(Ok(rec.clone())),
-        Ok(false) => None,
-    };
-
-    (result, rdr, rec)
-}
-
-/// A borrowed iterator over records as raw bytes.
-///
-/// The lifetime parameter `'r` refers to the lifetime of the underlying
-/// CSV `Reader`.
-pub struct ByteRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin,
-{
-    fut: Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = (
-                            Option<Result<ByteRecord>>,
-                            &'r mut AsyncReader<R>,
-                            ByteRecord,
-                        ),
-                    > + 'r,
-            >,
-        >,
-    >,
-}
-
-impl<'r, R> ByteRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin + 'r,
-{
-    fn new(rdr: &'r mut AsyncReader<R>) -> Self {
-        Self {
-            fut: Some(Pin::from(Box::new(read_byte_record_borrowed(
-                rdr,
-                ByteRecord::new(),
-            )))),
-        }
-    }
-}
-
-impl<'r, R> Stream for ByteRecordsStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin,
-{
-    type Item = Result<ByteRecord>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<ByteRecord>>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut = Some(Pin::from(Box::new(
-                        read_byte_record_borrowed(rdr, rec),
-                    )));
-                } else {
-                    self.fut = None;
-                }
-
-                Poll::Ready(result)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-async fn read_byte_record<R>(
-    mut rdr: AsyncReader<R>,
-    mut rec: ByteRecord,
-) -> (Option<Result<ByteRecord>>, AsyncReader<R>, ByteRecord)
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    let result = match rdr.read_byte_record(&mut rec).await {
-        Err(err) => Some(Err(err)),
-        Ok(true) => Some(Ok(rec.clone())),
-        Ok(false) => None,
-    };
-
-    (result, rdr, rec)
-}
-
-/// An owned iterator over records as raw bytes.
-pub struct ByteRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin
-{
-    fut: Option<
-        Pin<
-            Box<
-                dyn Future<
-                        Output = (
-                            Option<Result<ByteRecord>>,
-                            AsyncReader<R>,
-                            ByteRecord,
-                        ),
-                    > + 'r,
-            >,
-        >,
-    >,
-}
-
-impl<'r, R> ByteRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin + 'r
-{
-    fn new(rdr: AsyncReader<R>) -> Self {
-        Self {
-            fut: Some(Pin::from(Box::new(read_byte_record(
-                rdr,
-                ByteRecord::new(),
-            )))),
-        }
-    }
-}
-
-impl<'r, R> Stream for ByteRecordsIntoStream<'r, R>
-where
-    R: io::AsyncRead + std::marker::Unpin + 'r
-{
-    type Item = Result<ByteRecord>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<ByteRecord>>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut =
-                        Some(Pin::from(Box::new(read_byte_record(rdr, rec))));
-                } else {
-                    self.fut = None;
-                }
-
-                Poll::Ready(result)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use futures::io;
     use futures::stream::StreamExt;
+    use serde::Deserialize;
     use async_std::task;
 
     use crate::byte_record::ByteRecord;
     use crate::error::ErrorKind;
     use crate::string_record::StringRecord;
+    use crate::Trim;
 
-    use super::{Position, AsyncReaderBuilder, Trim};
+    use super::{Position, AsyncReaderBuilder};
 
     fn b(s: &str) -> &[u8] {
         s.as_bytes()
@@ -1385,7 +1092,7 @@ mod tests {
         task::block_on(async {
             let data = b("foo,\"b,ar\",baz\nabc,mno,xyz");
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -1411,7 +1118,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::All)
-                .from_reader(data);
+                .create_deserializer(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("1", s(&rec[0]));
@@ -1439,7 +1146,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Headers)
-                .from_reader(data);
+                .create_deserializer(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("  1", s(&rec[0]));
@@ -1462,7 +1169,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Headers)
-                .from_reader(data);
+                .create_deserializer(data);
             let mut rec = StringRecord::new();
 
             // force the headers to be read
@@ -1493,7 +1200,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(true)
                 .trim(Trim::Fields)
-                .from_reader(data);
+                .create_deserializer(data);
             let mut rec = ByteRecord::new();
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
             assert_eq!("1", s(&rec[0]));
@@ -1514,7 +1221,7 @@ mod tests {
         task::block_on(async {
             let data = b("foo\nbar,baz");
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -1544,7 +1251,7 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
                 .flexible(true)
-                .from_reader(data);
+                .create_deserializer(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -1567,7 +1274,7 @@ mod tests {
         task::block_on(async {
             let data = b("foo\nbar,baz\nquux");
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer(data);
             let mut rec = ByteRecord::new();
 
             assert!(rdr.read_byte_record(&mut rec).await.unwrap());
@@ -1600,7 +1307,7 @@ mod tests {
     fn read_record_headers() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
-            let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
+            let mut rdr = AsyncReaderBuilder::new().has_headers(true).create_deserializer(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -1634,7 +1341,7 @@ mod tests {
     fn read_record_headers_invalid_utf8() {
         task::block_on(async {
             let data = &b"foo,b\xFFar,baz\na,b,c\nd,e,f"[..];
-            let mut rdr = AsyncReaderBuilder::new().has_headers(true).from_reader(data);
+            let mut rdr = AsyncReaderBuilder::new().has_headers(true).create_deserializer(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -1672,7 +1379,7 @@ mod tests {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer(data);
             let mut rec = StringRecord::new();
 
             {
@@ -1704,7 +1411,7 @@ mod tests {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f");
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader(data);
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer(data);
             let mut rec = StringRecord::new();
 
             assert!(rdr.read_record(&mut rec).await.unwrap());
@@ -1733,7 +1440,7 @@ mod tests {
     fn seek() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            let mut rdr = AsyncReaderBuilder::new().create_deserializer(io::Cursor::new(data));
             rdr.seek(newpos(18, 3, 2)).await.unwrap();
 
             let mut rec = StringRecord::new();
@@ -1760,7 +1467,7 @@ mod tests {
     fn seek_headers_after() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            let mut rdr = AsyncReaderBuilder::new().create_deserializer(io::Cursor::new(data));
             rdr.seek(newpos(18, 3, 2)).await.unwrap();
             assert_eq!(rdr.headers().await.unwrap(), vec!["foo", "bar", "baz"]);
         });
@@ -1772,7 +1479,7 @@ mod tests {
     fn seek_headers_before_after() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            let mut rdr = AsyncReaderBuilder::new().create_deserializer(io::Cursor::new(data));
             let headers = rdr.headers().await.unwrap().clone();
             rdr.seek(newpos(18, 3, 2)).await.unwrap();
             assert_eq!(&headers, rdr.headers().await.unwrap());
@@ -1786,11 +1493,14 @@ mod tests {
     fn seek_headers_no_actual_seek() {
         task::block_on(async {
             let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
-            let mut rdr = AsyncReaderBuilder::new().from_reader(io::Cursor::new(data));
+            let mut rdr = AsyncReaderBuilder::new().create_deserializer(io::Cursor::new(data));
             rdr.seek(Position::new()).await.unwrap();
             assert_eq!("foo", &rdr.headers().await.unwrap()[0]);
         });
     }
+
+    #[derive(Debug, Deserialize, Eq, PartialEq)]
+    struct Row1([String; 3]);
 
     // Test that position info is reported correctly in absence of headers.
     #[test]
@@ -1798,15 +1508,15 @@ mod tests {
         task::block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
                 .has_headers(false)
-                .from_reader("a,b,c\nx,y,z".as_bytes())
-                .into_records();
+                .create_deserializer("a,b,c\nx,y,z".as_bytes())
+                .into_deserialize_with_pos::<Row1>();
 
-            let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
-            assert_eq!(pos.byte(), 0);
+            let (_, pos) = rdr.next().await.unwrap();
+            assert_eq!(pos.byte(), 0); 
             assert_eq!(pos.line(), 1);
             assert_eq!(pos.record(), 0);
 
-            let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
+            let (_, pos) = rdr.next().await.unwrap();
             assert_eq!(pos.byte(), 6);
             assert_eq!(pos.line(), 2);
             assert_eq!(pos.record(), 1);
@@ -1814,33 +1524,19 @@ mod tests {
     }
 
     // Test that position info is reported correctly with headers.
-    // TODO: Remove debug, restore to original
     #[test]
     fn positions_headers() {
         task::block_on(async {
             let mut rdr = AsyncReaderBuilder::new()
-                .has_headers(false)
-                // .has_headers(true)
-                .from_reader("a,b,c\nx,y,z".as_bytes())
-                .into_records();
+                .has_headers(true)
+                .create_deserializer("a,b,c\nx,y,z".as_bytes())
+                .into_deserialize_with_pos::<Row1>();
 
-            // let pos = rdr.next().await.unwrap().unwrap().position().unwrap().clone();
-            let pos = rdr.next().await;
-            dbg!(&pos);
-            let pos = rdr.next().await;
-            dbg!(&pos);
-            let pos1 = pos.unwrap();
-            dbg!(&pos1);
-            let pos2 = pos1.unwrap();
-            dbg!(&pos2);
-            let pos3 = pos2.position();
-            dbg!(&pos3);
-            let pos4 = pos3.unwrap();
-            dbg!(&pos4);
-            // let pos5 = pos4.clone();
-            assert_eq!(pos4.byte(), 6);
-            assert_eq!(pos4.line(), 2);
-            assert_eq!(pos4.record(), 1);
+            let (_, pos) = rdr.next().await.unwrap();
+            assert_eq!(pos.byte(), 6); 
+            assert_eq!(pos.line(), 2);
+            // We could not count header as record, but we keep compatibility with 'csv' crate.
+            assert_eq!(pos.record(), 1);
         });
     }
 
@@ -1848,7 +1544,7 @@ mod tests {
     #[test]
     fn headers_on_empty_data() {
         task::block_on(async {
-            let mut rdr = AsyncReaderBuilder::new().from_reader("".as_bytes());
+            let mut rdr = AsyncReaderBuilder::new().create_deserializer("".as_bytes());
             let r = rdr.byte_headers().await.unwrap();
             assert_eq!(r.len(), 0);
         });
@@ -1859,8 +1555,8 @@ mod tests {
     fn no_headers_on_empty_data() {
         task::block_on(async {
             let mut rdr =
-            AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
-            assert_eq!(count(rdr.records()).await, 0);
+            AsyncReaderBuilder::new().has_headers(false).create_deserializer("".as_bytes());
+            assert_eq!(count(rdr.deserialize::<Row1>()).await, 0);
         });
     }
 
@@ -1870,9 +1566,9 @@ mod tests {
     fn no_headers_on_empty_data_after_headers() {
         task::block_on(async {
             let mut rdr =
-                AsyncReaderBuilder::new().has_headers(false).from_reader("".as_bytes());
+                AsyncReaderBuilder::new().has_headers(false).create_deserializer("".as_bytes());
             assert_eq!(rdr.headers().await.unwrap().len(), 0);
-            assert_eq!(count(rdr.records()).await, 0);
+            assert_eq!(count(rdr.deserialize::<Row1>()).await, 0);
         });
     }
 }

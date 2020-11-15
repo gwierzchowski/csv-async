@@ -9,24 +9,24 @@
 [![codecov](https://codecov.io/gh/gwierzchowski/csv-async/branch/master/graph/badge.svg)](https://codecov.io/gh/gwierzchowski/csv-async)
 
 This is CSV library to use in asynchronous environment.
-Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate except that this crate does not support `serde`.
+Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate with few exceptions like builder's `create_` functions instead of `from_` as in `csv`.
 
 Some code is borrowed from `csv` crate (synchronized with version 1.1.3 - May 2020).
-This package shares CSV parsing routines with `csv` crate by means of using `csv-core` crate.
+This package shares CSV parsing routines with `csv` by means of using `csv-core` crate.
 Major version of this crate will be kept in sync with major version of `csv` with which it is API compatible.
 
-CSV files are being read or write by objects of types `AsyncReader` or `AsyncWriter`.
-Library user is responsible for performing conversion from and to string types, which are used by reader's and writer's API.
-This version of library does not have support for `serde` serialization.
+CSV files are being read or written by objects of types `AsyncReader` / `AsyncWriter` to / from generic 
+text-based structures or by `AsyncDeserializer` / `AsyncSerializer` to / from data specific structures with generated `serde` interfaces.
 
 Library does not contain synchronous reader/writer. If you need it - please use `csv` crate.
 
 ## Cargo Features
-Features which can be enabled / disabled during program build.
+Features which can be enabled / disabled during library build.
 
-| Feature  | Default | Description |
-|----------|---------|-------------|
-| `tokio`  | off     | Enable to use crate with [tokio](https://tokio.rs) runtime and libraries |
+| Feature      | Default | Description |
+|--------------|---------|-------------|
+| `with_serde` | on      | Enable crate to use [serde](https://serde.rs) derive macros |
+| `tokio`      | off     | Enable crate to be used with [tokio](https://tokio.rs) runtime and libraries |
 
 Enabling `tokio` feature allows user to use `tokio::fs::File` and makes `AsyncReader` (`AsyncWriter`) 
 to be based on `tokio::io::AsyncRead` (`tokio::io::AsyncWrite`). Currently this crate depends on tokio version 0.2.
@@ -101,6 +101,5 @@ fn main() {
 Some ideas for future development:
 
 - Create benchmarks, maybe some performance improvements.
+- Things marked as TODO in the code.
 - Create more examples and tutorial.
-- Investigate possibility to add support for `serde`.
-
