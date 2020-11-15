@@ -638,10 +638,36 @@ pub struct ReaderState {
     cur_pos: Position,
     /// Whether the first record has been read or not.
     first: bool,
-    /// Whether the reader has been seeked or not.
+    /// Whether the reader has been seek or not.
     seeked: bool,
-    /// Whether EOF of the underlying reader has been reached or not.
-    eof: bool,
+    ///
+    /// IO errors on the underlying reader will be considered as an EOF for
+    /// subsequent read attempts, as it would be incorrect to keep on trying
+    /// to read when the underlying reader has broken.
+    ///
+    /// For clarity, having the best `Debug` impl and in case they need to be
+    /// treated differently at some point, we store whether the `EOF` is
+    /// considered because an actual EOF happened, or because we encountered
+    /// an IO error.
+    /// This has no additional runtime cost.
+    eof: ReaderEofState,
+}
+
+/// Whether EOF of the underlying reader has been reached or not.
+///
+/// IO errors on the underlying reader will be considered as an EOF for
+/// subsequent read attempts, as it would be incorrect to keep on trying
+/// to read when the underlying reader has broken.
+///
+/// For clarity, having the best `Debug` impl and in case they need to be
+/// treated differently at some point, we store whether the `EOF` is
+/// considered because an actual EOF happened, or because we encountered
+/// an IO error
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReaderEofState {
+    NotEof,
+    Eof,
+    IOError,
 }
 
 /// Headers encapsulates any data associated with the headers of CSV data.
@@ -745,7 +771,7 @@ where
                 cur_pos: Position::new(),
                 first: false,
                 seeked: false,
-                eof: false,
+                eof: ReaderEofState::NotEof,
             },
         }
     }
@@ -884,14 +910,16 @@ where
 
         record.clear();
         record.set_position(Some(self.state.cur_pos.clone()));
-        if self.state.eof {
+        if self.state.eof != ReaderEofState::NotEof {
             return Ok(false);
         }
         let (mut outlen, mut endlen) = (0, 0);
-        // let mut buf = String::new();
         loop {
             let (res, nin, nout, nend) = {
-                FillBuf::new(&mut self.rdr).await?;
+                if let Err(err) = FillBuf::new(&mut self.rdr).await {
+                    self.state.eof = ReaderEofState::IOError;
+                    return Err(err.into());
+                }
                 let (fields, ends) = record.as_parts();
                 self.core.read_record(
                     self.rdr.buffer(),
@@ -923,7 +951,7 @@ where
                     return Ok(true);
                 }
                 End => {
-                    self.state.eof = true;
+                    self.state.eof = ReaderEofState::Eof;
                     return Ok(false);
                 }
             }
@@ -940,7 +968,7 @@ where
     /// Returns true if and only if this reader has been exhausted.
     ///
     pub fn is_done(&self) -> bool {
-        self.state.eof
+        self.state.eof != ReaderEofState::NotEof
     }
 
     /// Returns true if and only if this reader has been configured to
@@ -982,7 +1010,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReaderImpl<R> {
         self.core.reset();
         self.core.set_line(pos.line());
         self.state.cur_pos = pos;
-        self.state.eof = false;
+        self.state.eof = ReaderEofState::NotEof;
         Ok(())
     }
 
@@ -999,7 +1027,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReaderImpl<R> {
         self.core.reset();
         self.core.set_line(pos.line());
         self.state.cur_pos = pos;
-        self.state.eof = false;
+        self.state.eof = ReaderEofState::NotEof;
         Ok(())
     }
 }
@@ -1465,7 +1493,11 @@ where
                     cx.waker().clone().wake();
                     Poll::Pending
                 },
-                Poll::Ready((Err(err), _)) => {
+                Poll::Ready((Err(err), rdr)) => {
+                    self.header_fut = None;
+                    self.rec_fut = Some(Pin::from(Box::new(
+                        deserialize_record_borrowed(rdr, None, StringRecord::new()),
+                    )));
                     Poll::Ready(Some(Err(err)))
                 },
                 Poll::Pending => Poll::Pending,
@@ -1591,7 +1623,12 @@ where
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
-                    Poll::Ready(Some((Err(err), rdr.position().clone())))
+                    self.header_fut = None;
+                    let pos = rdr.position().clone();
+                    self.rec_fut = Some(Pin::from(Box::new(
+                        deserialize_record_with_pos_borrowed(rdr, None, StringRecord::new()),
+                    )));
+                    Poll::Ready(Some((Err(err), pos)))
                 },
                 Poll::Pending => Poll::Pending,
             }
@@ -1714,7 +1751,11 @@ where
                     cx.waker().clone().wake();
                     Poll::Pending
                 },
-                Poll::Ready((Err(err), _)) => {
+                Poll::Ready((Err(err), rdr)) => {
+                    self.header_fut = None;
+                    self.rec_fut = Some(Pin::from(Box::new(
+                        deserialize_record(rdr, None, StringRecord::new()),
+                    )));
                     Poll::Ready(Some(Err(err)))
                 },
                 Poll::Pending => Poll::Pending,
@@ -1840,7 +1881,12 @@ where
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
-                    Poll::Ready(Some((Err(err), rdr.position().clone())))
+                    self.header_fut = None;
+                    let pos = rdr.position().clone();
+                    self.rec_fut = Some(Pin::from(Box::new(
+                        deserialize_record_with_pos(rdr, None, StringRecord::new()),
+                    )));
+                    Poll::Ready(Some((Err(err), pos)))
                 },
                 Poll::Pending => Poll::Pending,
             }

@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
 edition = "2018"

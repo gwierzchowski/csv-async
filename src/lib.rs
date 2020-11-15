@@ -52,9 +52,9 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-csv-async = "1.0.1"
+csv-async = "1.1"
 # or
-# csv-async = {version = "1.0.1", features = ["tokio"]}
+# csv-async = {version = "1.1", features = ["tokio"]}
 ```
 
 # Examples
@@ -172,8 +172,7 @@ struct Row {
 #[cfg(feature = "with_serde")]
 async fn filter_by_region_serde(region:&str, file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {
     // Function reads CSV file that has column named "region" at second position (index = 1).
-    // It writes to new file only rows with region equal to passed argument
-    // and removes region column.
+    // It writes to new file only rows with region equal to passed argument.
     let mut rdr = csv_async::AsyncDeserializer::from_reader(
         File::open(file_in).await?
     );
@@ -394,14 +393,6 @@ if #[cfg(feature = "with_serde")] {
     mod deserializer;
     mod serializer;
 }}
-
-/*
-Note: A lot of code in _futures and _tokio modules is duplicated.
-This is conscious decision. I prefer to have cleaner code although duplicated
-than some #[cfg xxx] directives, especially in doc-tests.
-Also it is not guaranteed that tokio Async io interfaces will be always similar to 
-futures' ones and if those codes will not go in different directions.
-*/
 
 mod async_readers;
 mod async_writers;

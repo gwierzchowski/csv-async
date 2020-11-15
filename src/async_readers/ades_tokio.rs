@@ -119,6 +119,10 @@ impl AsyncReaderBuilder {
 ///   [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html).
 /// * When reading CSV data from a resource (like a file), it is possible for
 ///   reading from the underlying resource to fail. This will return an error.
+///   For subsequent calls to the reader after encountering a such error
+///   (unless `seek` is used), it will behave as if end of file had been
+///   reached, in order to avoid running into infinite loops when still
+///   attempting to read the next record when one has errored.
 /// * When reading CSV data into `String` or `&str` fields (e.g., via a
 ///   [`StringRecord`](struct.StringRecord.html)), UTF-8 is strictly
 ///   enforced. If CSV data is invalid UTF-8, then an error is returned. If
@@ -958,6 +962,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use tokio::io;
     use tokio::stream::StreamExt;
     use serde::Deserialize;
     use tokio::runtime::Runtime;
@@ -967,7 +975,7 @@ mod tests {
     use crate::string_record::StringRecord;
     use crate::Trim;
 
-    use super::{Position, AsyncReaderBuilder};
+    use super::{Position, AsyncReaderBuilder, AsyncDeserializer};
 
     fn b(s: &str) -> &[u8] {
         s.as_bytes()
@@ -1405,6 +1413,33 @@ mod tests {
                 AsyncReaderBuilder::new().has_headers(false).create_deserializer("".as_bytes());
             assert_eq!(rdr.headers().await.unwrap().len(), 0);
             assert_eq!(count(rdr.deserialize::<Row1>()).await, 0);
+        });
+    }
+
+    #[test]
+    fn no_infinite_loop_on_io_errors() {
+        struct FailingRead;
+        impl io::AsyncRead for FailingRead {
+            fn poll_read(
+                self: Pin<&mut Self>,
+                _cx: &mut Context,
+                _buf: &mut [u8]
+            ) -> Poll<Result<usize, io::Error>> {
+                Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "Broken reader")))
+            }
+        }
+        impl std::marker::Unpin for FailingRead {}
+
+        #[derive(Deserialize)]
+        struct Fake;
+    
+        Runtime::new().unwrap().block_on(async {
+            let mut record_results = AsyncDeserializer::from_reader(FailingRead).into_deserialize::<Fake>();
+            let first_result = record_results.next().await;
+            assert!(
+                matches!(&first_result, Some(Err(e)) if matches!(e.kind(), crate::ErrorKind::Io(_)))
+            );
+            assert!(record_results.next().await.is_none());
         });
     }
 }

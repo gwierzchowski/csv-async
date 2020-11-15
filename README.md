@@ -11,7 +11,7 @@
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate with few exceptions like builder's `create_` functions instead of `from_` as in `csv`.
 
-Some code is borrowed from `csv` crate (synchronized with version 1.1.3 - May 2020).
+Some code is borrowed from `csv` crate (synchronized with version 1.1.4 - Nov 2020).
 This package shares CSV parsing routines with `csv` by means of using `csv-core` crate.
 Major version of this crate will be kept in sync with major version of `csv` with which it is API compatible.
 
@@ -97,6 +97,9 @@ fn main() {
     });
 }
 ```
+
+For serde example please see documentation [root](https://docs.rs/csv-async) page.
+
 ## Plans
 Some ideas for future development:
 
