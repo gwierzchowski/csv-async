@@ -1,0 +1,26 @@
+name: Coverage
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  codecov:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Generate coverage file
+      run: |
+        which cargo-tarpaulin || cargo install cargo-tarpaulin
+        cargo tarpaulin --version
+        cargo tarpaulin --out Xml --exclude-files *tokio*.rs
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: cobertura.xml
