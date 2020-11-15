@@ -17,7 +17,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Generate coverage file
       run: |
-        which cargo-tarpaulin || cargo install cargo-tarpaulin
+        which cargo-tarpaulin || cargo install cargo-tarpaulin --version 0.15.0
         cargo tarpaulin --version
         cargo tarpaulin --out Xml --exclude-files *tokio*.rs
     - name: Upload to Codecov
