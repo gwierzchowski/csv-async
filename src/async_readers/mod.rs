@@ -1541,7 +1541,7 @@ where
     (result, pos, rdr, headers, rec)
 }
 
-/// A owned stream of pairs: deserialized records and position in stream before reading record.
+/// A borrowed stream of pairs: deserialized records and position in stream before reading record.
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying CSV `Reader`.
 /// type, and `D` refers to the type that this stream will deserialize a record into.

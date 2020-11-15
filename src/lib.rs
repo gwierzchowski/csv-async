@@ -430,14 +430,16 @@ if #[cfg(feature = "tokio")] {
 #[cfg(all(feature = "with_serde", not(feature = "tokio")))]
 pub use crate::async_readers::{
     ades_futures::AsyncDeserializer, 
-    DeserializeRecordsStream, DeserializeRecordsIntoStream
+    DeserializeRecordsStream, DeserializeRecordsIntoStream,
+    DeserializeRecordsStreamPos, DeserializeRecordsIntoStreamPos,
 };
 #[cfg(all(feature = "with_serde", not(feature = "tokio")))]
 pub use crate::async_writers::aser_futures::AsyncSerializer;
 #[cfg(all(feature = "with_serde", feature = "tokio"))]
 pub use crate::async_readers::{
     ades_tokio::AsyncDeserializer, 
-    DeserializeRecordsStream, DeserializeRecordsIntoStream
+    DeserializeRecordsStream, DeserializeRecordsIntoStream,
+    DeserializeRecordsStreamPos, DeserializeRecordsIntoStreamPos,
 };
 #[cfg(all(feature = "with_serde", feature = "tokio"))]
 pub use crate::async_writers::aser_tokio::AsyncSerializer;
