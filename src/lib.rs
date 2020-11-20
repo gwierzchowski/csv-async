@@ -8,7 +8,7 @@ The `csv-async` crate provides a fast and flexible CSV reader and writer,
 which is intended to be run in asynchronous environment - i.e.
 inside functions with `async` attribute called by tasks run by executor.
 This library does not imply using any particular executor.
-Unit tests and documentation snippets uses either `async-std` or `tokio` crates.
+Unit tests and documentation snippets use either `async-std` or `tokio` crates.
 Synchronous interface for reading and writing CSV files is not contained in this crate,
 please use `csv` crate for this. This crate attempts to mimic `csv` crate API, but there are some exceptions.
 E.g. configuration builders have `create_...` factory functions instead of `from_...` as in `csv` crate.
@@ -125,7 +125,7 @@ fn main() {
             "/tmp/all_regions.csv",
             "/tmp/MA_only.csv"
         ).await {
-            println!("error running filter_by_region: {}", err);
+            eprintln!("error running filter_by_region: {}", err);
             process::exit(1);
         }
     });
@@ -139,7 +139,7 @@ fn main() {
             "/tmp/all_regions.csv",
             "/tmp/MA_only.csv"
         ).await {
-            println!("error running filter_by_region: {}", err);
+            eprintln!("error running filter_by_region: {}", err);
             process::exit(1);
         }
     });
@@ -198,7 +198,7 @@ fn main() {
             "/tmp/all_regions.csv",
             "/tmp/MA_only.csv"
         ).await {
-            println!("error running filter_by_region_serde: {}", err);
+            eprintln!("error running filter_by_region_serde: {}", err);
             process::exit(1);
         }
     });
@@ -213,7 +213,7 @@ fn main() {
             "/tmp/all_regions.csv",
             "/tmp/MA_only.csv"
         ).await {
-            println!("error running filter_by_region_serde: {}", err);
+            eprintln!("error running filter_by_region_serde: {}", err);
             process::exit(1);
         }
     });

@@ -15,9 +15,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-tarpaulin
+        version: latest
     - name: Generate coverage file
       run: |
-        which cargo-tarpaulin || cargo install cargo-tarpaulin --version 0.15.0
         cargo tarpaulin --version
         cargo tarpaulin --out Xml --exclude-files *tokio*.rs
     - name: Upload to Codecov

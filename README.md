@@ -25,8 +25,8 @@ Features which can be enabled / disabled during library build.
 
 | Feature      | Default | Description |
 |--------------|---------|-------------|
-| `with_serde` | on      | Enable crate to use [serde](https://serde.rs) derive macros |
-| `tokio`      | off     | Enable crate to be used with [tokio](https://tokio.rs) runtime and libraries |
+| `with_serde` | on      | Enables crate to use [serde](https://serde.rs) derive macros |
+| `tokio`      | off     | Enables crate to be used with [tokio](https://tokio.rs) runtime and libraries |
 
 Enabling `tokio` feature allows user to use `tokio::fs::File` and makes `AsyncReader` (`AsyncWriter`) 
 to be based on `tokio::io::AsyncRead` (`tokio::io::AsyncWrite`). Currently this crate depends on tokio version 0.2.
@@ -91,7 +91,7 @@ fn main() {
             "/tmp/all_regions.csv",
             "/tmp/MA_only.csv"
         ).await {
-            println!("error running filter_by_region: {}", err);
+            eprintln!("error running filter_by_region: {}", err);
             process::exit(1);
         }
     });
