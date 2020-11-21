@@ -1299,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn no_infinite_loop_on_io_errors() {
+    fn behavior_on_io_errors() {
         struct FailingRead;
         impl io::AsyncRead for FailingRead {
             fn poll_read(
@@ -1313,12 +1313,27 @@ mod tests {
         impl std::marker::Unpin for FailingRead {}
     
         task::block_on(async {
-            let mut record_results = AsyncReader::from_reader(FailingRead).into_records();
-            let first_result = record_results.next().await;
+            let mut records = AsyncReader::from_reader(FailingRead).into_records();
+            let first_record = records.next().await;
             assert!(
-                matches!(&first_result, Some(Err(e)) if matches!(e.kind(), crate::ErrorKind::Io(_)))
+                matches!(&first_record, Some(Err(e)) if matches!(e.kind(), crate::ErrorKind::Io(_)))
             );
-            assert!(record_results.next().await.is_none());
+            assert!(records.next().await.is_none());
+        });
+    
+        task::block_on(async {
+            let mut records = AsyncReaderBuilder::new()
+                .end_on_io_error(false)
+                .create_reader(FailingRead)
+                .into_records();
+            let first_record = records.next().await;
+            assert!(
+                matches!(&first_record, Some(Err(e)) if matches!(e.kind(), crate::ErrorKind::Io(_)))
+            );
+            let second_record = records.next().await;
+            assert!(
+                matches!(&second_record, Some(Err(e)) if matches!(e.kind(), crate::ErrorKind::Io(_)))
+            );
         });
     }
 }

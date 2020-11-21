@@ -51,6 +51,7 @@ pub struct AsyncReaderBuilder {
     flexible: bool,
     has_headers: bool,
     trim: Trim,
+    end_on_io_error: bool,
     /// The underlying CSV parser builder.
     ///
     /// We explicitly put this on the heap because CoreReaderBuilder embeds an
@@ -66,6 +67,7 @@ impl Default for AsyncReaderBuilder {
             flexible: false,
             has_headers: true,
             trim: Trim::default(),
+            end_on_io_error: true,
             builder: Box::new(CoreReaderBuilder::default()),
         }
     }
@@ -307,6 +309,14 @@ impl AsyncReaderBuilder {
     )]
     pub fn get_trim_option(&self) -> Trim {
         self.trim
+    }
+    
+    /// If set, CSV records' stream will end when first i/o error happens. 
+    /// Otherwise it will continue trying to read from underlying reader.
+    /// By default this option is set.
+    pub fn end_on_io_error(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
+        self.end_on_io_error = yes;
+        self
     }
 
     /// Whether fields are trimmed of leading and trailing whitespace or not.
@@ -640,7 +650,9 @@ pub struct ReaderState {
     first: bool,
     /// Whether the reader has been seek or not.
     seeked: bool,
-    ///
+    /// If set, CSV records' stream will end when first i/o error happens. 
+    /// Otherwise it will continue trying to read from underlying reader.
+    end_on_io_error: bool,
     /// IO errors on the underlying reader will be considered as an EOF for
     /// subsequent read attempts, as it would be incorrect to keep on trying
     /// to read when the underlying reader has broken.
@@ -738,8 +750,6 @@ impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
     type Output = io::Result<usize>;
     
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // let Self { reader } = &mut *self;
-        // match Pin::new(reader).poll_fill_buf(cx) {
         match Pin::new(&mut *self.reader).poll_fill_buf(cx) {
             Poll::Ready(res) => {
                 match res {
@@ -767,6 +777,7 @@ where
                 has_headers: builder.has_headers,
                 flexible: builder.flexible,
                 trim: builder.trim,
+                end_on_io_error: builder.end_on_io_error,
                 first_field_count: None,
                 cur_pos: Position::new(),
                 first: false,
@@ -910,8 +921,12 @@ where
 
         record.clear();
         record.set_position(Some(self.state.cur_pos.clone()));
-        if self.state.eof != ReaderEofState::NotEof {
-            return Ok(false);
+        match self.state.eof {
+            ReaderEofState::Eof => return Ok(false),
+            ReaderEofState::IOError => {
+                if self.state.end_on_io_error { return Ok(false) }
+            },
+            ReaderEofState::NotEof => {}
         }
         let (mut outlen, mut endlen) = (0, 0);
         loop {
