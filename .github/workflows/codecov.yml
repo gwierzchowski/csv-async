@@ -19,6 +19,7 @@ jobs:
       with:
         crate: cargo-tarpaulin
         version: latest
+        use-tool-cache: true
     - name: Generate coverage file
       run: |
         cargo tarpaulin --version
