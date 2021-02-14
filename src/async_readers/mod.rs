@@ -312,7 +312,10 @@ impl AsyncReaderBuilder {
     }
     
     /// If set, CSV records' stream will end when first i/o error happens. 
-    /// Otherwise it will continue trying to read from underlying reader.
+    /// Otherwise CSV reader will continue trying to read from underlying reader.
+    /// For sample, please see unit test `behavior_on_io_errors` in following
+    /// [source file](https://github.com/gwierzchowski/csv-async/blob/master/src/async_readers/ardr_futures.rs).
+    /// 
     /// By default this option is set.
     pub fn end_on_io_error(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.end_on_io_error = yes;
