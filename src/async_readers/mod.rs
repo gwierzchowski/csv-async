@@ -7,7 +7,7 @@ cfg_if::cfg_if! {
 if #[cfg(feature = "tokio")] {
     use std::io::SeekFrom;
     use tokio::io::{self, AsyncBufRead};
-    use tokio::stream::Stream;
+    use tokio_stream::Stream;
 } else {
     use futures::io::{self, AsyncBufRead, AsyncSeekExt};
     use futures::stream::Stream;

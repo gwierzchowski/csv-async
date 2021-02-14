@@ -22,7 +22,7 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
     /// 
@@ -70,7 +70,7 @@ impl AsyncReaderBuilder {
 ///
 /// ```
 /// use std::error::Error;
-/// use tokio::stream::StreamExt;
+/// use tokio_stream::StreamExt;
 /// use serde::Deserialize;
 /// use csv_async::AsyncReaderBuilder;
 /// 
@@ -158,7 +158,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     /// 
@@ -213,7 +213,7 @@ where
     /// ```
     /// use std::error::Error;
     ///
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     ///
@@ -271,7 +271,7 @@ where
     /// ```
     /// use std::error::Error;
     ///
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
     ///
@@ -319,7 +319,7 @@ where
     /// ```
     /// use std::error::Error;
     ///
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     ///
@@ -406,7 +406,7 @@ where
     /// ```
     /// use std::error::Error;
     ///
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     ///
@@ -489,7 +489,7 @@ where
     /// ```
     /// use std::error::Error;
     ///
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     ///
@@ -563,7 +563,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     /// 
@@ -631,7 +631,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
     ///
@@ -844,7 +844,7 @@ where
     /// ```
     /// use std::error::Error;
     /// use std::io;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::{AsyncDeserializer, Position};
     ///
@@ -895,7 +895,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::{AsyncDeserializer, Position};
     ///
@@ -966,7 +966,7 @@ mod tests {
     use std::task::{Context, Poll};
 
     use tokio::io;
-    use tokio::stream::StreamExt;
+    use tokio_stream::StreamExt;
     use serde::Deserialize;
     use tokio::runtime::Runtime;
 

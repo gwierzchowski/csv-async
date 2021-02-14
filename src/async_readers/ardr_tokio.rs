@@ -20,7 +20,7 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReaderBuilder;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -68,7 +68,7 @@ impl AsyncReaderBuilder {
 ///
 /// ```
 /// use std::error::Error;
-/// use tokio::stream::StreamExt;
+/// use tokio_stream::StreamExt;
 /// use csv_async::AsyncReaderBuilder;
 ///
 /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -145,7 +145,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -181,7 +181,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -219,7 +219,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -254,7 +254,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -291,7 +291,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -333,7 +333,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -390,7 +390,7 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -586,7 +586,7 @@ where
     /// ```
     /// use std::error::Error;
     /// use std::io;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::{AsyncReader, Position};
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -630,7 +630,7 @@ where
     /// ```
     /// use std::error::Error;
     /// use tokio::io;
-    /// use tokio::stream::StreamExt;
+    /// use tokio_stream::StreamExt;
     /// use csv_async::{AsyncReader, Position};
     ///
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
@@ -693,7 +693,7 @@ mod tests {
     use std::task::{Context, Poll};
 
     use tokio::io;
-    use tokio::stream::StreamExt;
+    use tokio_stream::StreamExt;
     use tokio::runtime::Runtime;
 
     use crate::byte_record::ByteRecord;
