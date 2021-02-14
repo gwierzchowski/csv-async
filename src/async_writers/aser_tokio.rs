@@ -27,7 +27,7 @@ impl AsyncWriterBuilder {
     ///     y: u64,
     /// }
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut ser = AsyncWriterBuilder::new().has_headers(false).create_serializer(vec![]);
     ///     ser.serialize(Row {name: "p1", x: 1, y: 2}).await?;
@@ -114,7 +114,7 @@ impl<W: AsyncWrite + Unpin> AsyncSerializer<W> {
     ///     y: u64,
     /// }
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut ser = AsyncSerializer::from_writer(vec![]);
     ///     ser.serialize(Row {name: "p1", x: 1, y: 2}).await?;
@@ -154,7 +154,7 @@ impl<W: AsyncWrite + Unpin> AsyncSerializer<W> {
     ///     population: u64,
     /// }
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut ser = AsyncSerializer::from_writer(vec![]);
     ///     ser.serialize(Row {
@@ -239,7 +239,7 @@ impl<W: AsyncWrite + Unpin> AsyncSerializer<W> {
     ///     Float(f64),
     /// }
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut ser = AsyncSerializer::from_writer(vec![]);
     ///     ser.serialize(Row {
@@ -298,7 +298,7 @@ impl<W: AsyncWrite + Unpin> AsyncSerializer<W> {
     ///     values: Vec<f64>,
     /// }
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut ser = AsyncWriterBuilder::new()
     ///         .has_headers(false)

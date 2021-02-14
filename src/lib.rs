@@ -81,6 +81,8 @@ use futures::stream::StreamExt;
 #[cfg(not(feature = "tokio"))]
 use async_std::fs::File;
 #[cfg(feature = "tokio")]
+use tokio1 as tokio;
+#[cfg(feature = "tokio")]
 use tokio_stream::StreamExt;
 #[cfg(feature = "tokio")]
 use tokio::fs::File;
@@ -156,6 +158,8 @@ use futures::stream::StreamExt;
 #[cfg(not(feature = "tokio"))]
 use async_std::fs::File;
 #[cfg(feature = "tokio")]
+use tokio1 as tokio;
+#[cfg(feature = "tokio")]
 use tokio_stream::StreamExt;
 #[cfg(feature = "tokio")]
 use tokio::fs::File;
@@ -223,6 +227,9 @@ fn main() {
 fn main() {}
 ```
 */
+
+#[cfg(feature = "tokio")]
+extern crate tokio1 as tokio;
 
 #[cfg(test)]
 mod tests {

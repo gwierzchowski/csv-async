@@ -19,7 +19,7 @@ impl AsyncWriterBuilder {
     /// use std::error::Error;
     /// use csv_async::AsyncWriterBuilder;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new().create_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
@@ -87,7 +87,7 @@ impl<W: AsyncWrite + Unpin> AsyncWriter<W> {
     /// use std::error::Error;
     /// use csv_async::AsyncWriter;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriter::from_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
@@ -117,7 +117,7 @@ impl<W: AsyncWrite + Unpin> AsyncWriter<W> {
     /// use std::error::Error;
     /// use csv_async::AsyncWriter;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriter::from_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
@@ -156,7 +156,7 @@ impl<W: AsyncWrite + Unpin> AsyncWriter<W> {
     /// use std::error::Error;
     /// use csv_async::{ByteRecord, AsyncWriter};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriter::from_writer(vec![]);
     ///     wtr.write_byte_record(&ByteRecord::from(&["a", "b", "c"][..])).await?;
@@ -187,7 +187,7 @@ impl<W: AsyncWrite + Unpin> AsyncWriter<W> {
     /// use std::error::Error;
     /// use csv_async::AsyncWriter;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriter::from_writer(vec![]);
     ///     wtr.write_field("a").await?;

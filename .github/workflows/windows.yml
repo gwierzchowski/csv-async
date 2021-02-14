@@ -30,3 +30,5 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run tests with Tokio
+      run: cargo test --verbose --features tokio

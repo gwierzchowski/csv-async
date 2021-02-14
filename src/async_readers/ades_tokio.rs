@@ -21,10 +21,11 @@ impl AsyncReaderBuilder {
     /// # Example
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -69,10 +70,11 @@ impl AsyncReaderBuilder {
 /// a `AsyncDeserializer`. For example, to change the field delimiter:
 ///
 /// ```
+/// # use tokio1 as tokio;
 /// use std::error::Error;
-/// use tokio_stream::StreamExt;
-/// use serde::Deserialize;
 /// use csv_async::AsyncReaderBuilder;
+/// use serde::Deserialize;
+/// use tokio_stream::StreamExt;
 /// 
 /// #[derive(Debug, Deserialize, Eq, PartialEq)]
 /// struct Row {
@@ -157,10 +159,11 @@ where
     /// # Example
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -202,7 +205,7 @@ where
     /// based on the header row.
     /// 
     /// Frequently turbo-fish notation is needed while calling this function:
-    /// `rdr.deserialize::<RecordTyme>();`
+    /// `rdr.deserialize::<RecordType>();`
     ///
     /// # Example
     ///
@@ -211,11 +214,12 @@ where
     /// to the fields of the struct.
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     ///
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -269,11 +273,12 @@ where
     /// a "tail" of fields in a record:
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     ///
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -317,11 +322,12 @@ where
     /// following example shows both forms in action:
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     ///
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, PartialEq)]
     /// struct Row {
@@ -395,7 +401,7 @@ where
     /// possibility of error (typically with `?`).
     /// 
     /// Frequently turbo-fish notation is needed while calling this function:
-    /// `rdr.deserialize_with_pos::<RecordTyme>();`
+    /// `rdr.deserialize_with_pos::<RecordType>();`
     ///
     /// # Example
     ///
@@ -404,11 +410,12 @@ where
     /// to the fields of the struct.
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     ///
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -478,7 +485,7 @@ where
     /// based on the header row.
     /// 
     /// Frequently turbo-fish notation is needed while calling this function:
-    /// `rdr.into_deserialize::<RecordTyme>();`
+    /// `rdr.into_deserialize::<RecordType>();`
     ///
     /// # Example
     ///
@@ -487,11 +494,12 @@ where
     /// to the fields of the struct.
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     ///
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -562,10 +570,11 @@ where
     /// the header row does not appear as a record in the iterator!
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -630,10 +639,11 @@ where
     /// the header row does not appear as a record in the iterator!
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -692,7 +702,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncDeserializer, StringRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -724,7 +734,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncDeserializer, ByteRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -764,7 +774,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncDeserializer, StringRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -806,7 +816,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{ByteRecord, AsyncDeserializer};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -842,11 +852,12 @@ where
     /// # Example: reading the position
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     /// use std::io;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::{AsyncDeserializer, Position};
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -894,10 +905,11 @@ where
     /// # Example
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
-    /// use serde::Deserialize;
     /// use csv_async::{AsyncDeserializer, Position};
+    /// use serde::Deserialize;
+    /// use tokio_stream::StreamExt;
     ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
@@ -1423,8 +1435,8 @@ mod tests {
             fn poll_read(
                 self: Pin<&mut Self>,
                 _cx: &mut Context,
-                _buf: &mut [u8]
-            ) -> Poll<Result<usize, io::Error>> {
+                _buf: &mut tokio::io::ReadBuf
+            ) -> Poll<Result<(), io::Error>> {
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "Broken reader")))
             }
         }

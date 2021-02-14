@@ -20,10 +20,10 @@ impl AsyncReaderBuilder {
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReaderBuilder;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -68,10 +68,10 @@ impl AsyncReaderBuilder {
 ///
 /// ```
 /// use std::error::Error;
-/// use tokio_stream::StreamExt;
 /// use csv_async::AsyncReaderBuilder;
+/// use tokio_stream::StreamExt;
 ///
-/// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+/// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
 /// async fn example() -> Result<(), Box<dyn Error>> {
 ///     let data = "\
 /// city;country;pop
@@ -145,10 +145,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -181,10 +181,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -219,10 +219,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -254,10 +254,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -291,10 +291,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -333,10 +333,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -390,10 +390,10 @@ where
     ///
     /// ```
     /// use std::error::Error;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::AsyncReader;
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -439,7 +439,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -471,7 +471,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, ByteRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -511,7 +511,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{AsyncReader, StringRecord};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -553,7 +553,7 @@ where
     /// use std::error::Error;
     /// use csv_async::{ByteRecord, AsyncReader};
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,pop
@@ -586,10 +586,10 @@ where
     /// ```
     /// use std::error::Error;
     /// use std::io;
-    /// use tokio_stream::StreamExt;
     /// use csv_async::{AsyncReader, Position};
+    /// use tokio_stream::StreamExt;
     ///
-    /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
+    /// # fn main() { tokio1::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = "\
     /// city,country,popcount
@@ -628,6 +628,7 @@ where
     /// # Example
     ///
     /// ```
+    /// # use tokio1 as tokio;
     /// use std::error::Error;
     /// use tokio::io;
     /// use tokio_stream::StreamExt;
@@ -1146,8 +1147,8 @@ mod tests {
             fn poll_read(
                 self: Pin<&mut Self>,
                 _cx: &mut Context,
-                _buf: &mut [u8]
-            ) -> Poll<Result<usize, io::Error>> {
+                _buf: &mut tokio::io::ReadBuf
+            ) -> Poll<Result<(), io::Error>> {
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "Broken reader")))
             }
         }

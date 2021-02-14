@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "1.1.2"
+version = "1.2.0-beta1"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
 edition = "2018"
@@ -14,10 +14,14 @@ exclude = [".gitignore", ".github/**", "codecov.yml"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+# For tests
 # default = ["with_serde", "tokio"]
 # default = ["tokio"]
+
+# This is stock default set
 default = ["with_serde"]
 with_serde = ["serde", "bstr/serde1", "itoa", "ryu"]
+tokio = ["tokio1", "tokio-stream"]
 
 [dependencies]
 bstr = "0.2"
@@ -25,14 +29,13 @@ cfg-if = "1"
 csv-core = "0.1"
 futures = "0.3"
 itoa = { version = "0.4", optional = true }
-ryu  = { version = "1.0", optional = true }
-serde = { version = "1.0", optional = true }
-tokio = { version = "1.0", features = ["io-util", "fs"], optional = true }
-tokio-stream = "0.1"
-# Enable after more projects (e.g. actix) upgrade
-# tokio = { version = "0.3", features = ["rt"], optional = true }
+ryu  = { version = "1", optional = true }
+serde = { version = "1", optional = true }
+tokio1 = { package = "tokio", version = "1", features = ["io-util", "fs"], optional = true }
+tokio-stream = { version = "0.1", optional = true }
 
 [dev-dependencies]
-async-std = "1.8"
-indoc = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+async-std = "1"
+indoc = "1"
+serde = { version = "1", features = ["derive"] }
+tokio1 = { package = "tokio", version = "1", features = ["rt", "rt-multi-thread"] }
