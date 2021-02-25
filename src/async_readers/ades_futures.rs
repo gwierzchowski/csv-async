@@ -139,6 +139,9 @@ impl AsyncReaderBuilder {
 #[derive(Debug)]
 pub struct AsyncDeserializer<R>(AsyncReaderImpl<R>);
 
+unsafe impl<R: Send + Sync> Send for AsyncDeserializer<R> {}
+unsafe impl<R: Send + Sync> Sync for AsyncDeserializer<R> {}
+
 impl<'r, R> AsyncDeserializer<R>
 where
     R: io::AsyncRead + std::marker::Unpin + 'r,
