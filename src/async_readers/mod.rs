@@ -1725,6 +1725,9 @@ where
     >,
 }
 
+unsafe impl<'r, R: io::AsyncRead + Unpin + Send + Sync, D> Send for DeserializeRecordsIntoStream<'r, R, D> {}
+unsafe impl<'r, R: io::AsyncRead + Unpin + Send + Sync, D> Sync for DeserializeRecordsIntoStream<'r, R, D> {}
+
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsIntoStream<'r, R, D>
 where
     R: io::AsyncRead + std::marker::Unpin + 'r
