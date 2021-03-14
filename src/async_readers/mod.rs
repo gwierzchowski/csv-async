@@ -767,7 +767,7 @@ impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
 
 impl<'r, R> AsyncReaderImpl<R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r,
+    R: io::AsyncRead + Unpin + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
@@ -1015,7 +1015,7 @@ where
 }
 
 #[cfg(not(feature = "tokio"))]
-impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReaderImpl<R> {
+impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
     /// Seeks the underlying reader to the position given.
     ///
     pub async fn seek(&mut self, pos: Position) -> Result<()> {
@@ -1052,7 +1052,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReaderImpl<R> {
 
 #[cfg(feature = "tokio")]
 #[allow(dead_code)]
-impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReaderImpl<R> {
+impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
     /// Attempts to seek to an offset, in bytes, in a stream.
     ///
     /// If this function returns successfully, then the job has been submitted.
@@ -1092,7 +1092,7 @@ async fn read_record_borrowed<'r, R>(
     mut rec: StringRecord,
 ) -> (Option<Result<StringRecord>>, &'r mut AsyncReaderImpl<R>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1109,7 +1109,7 @@ where
 /// CSV `Reader`.
 pub struct StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fut: Option<
         Pin<
@@ -1120,7 +1120,7 @@ where
                             &'r mut AsyncReaderImpl<R>,
                             StringRecord,
                         ),
-                    > + 'r,
+                    > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1128,7 +1128,7 @@ where
 
 impl<'r, R> StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1142,7 +1142,7 @@ where
 
 impl<'r, R> Stream for StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     type Item = Result<StringRecord>;
 
@@ -1175,7 +1175,7 @@ async fn read_record<R>(
     mut rec: StringRecord,
 ) -> (Option<Result<StringRecord>>, AsyncReaderImpl<R>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1189,7 +1189,7 @@ where
 /// An owned stream of records as strings.
 pub struct StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fut: Option<
         Pin<
@@ -1200,7 +1200,7 @@ where
                         AsyncReaderImpl<R>,
                         StringRecord,
                     ),
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1208,7 +1208,7 @@ where
 
 impl<'r, R> StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     fn new(rdr: AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1222,7 +1222,7 @@ where
 
 impl<'r, R> Stream for StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     type Item = Result<StringRecord>;
 
@@ -1254,7 +1254,7 @@ async fn read_byte_record_borrowed<'r, R>(
     mut rec: ByteRecord,
 ) -> (Option<Result<ByteRecord>>, &'r mut AsyncReaderImpl<R>, ByteRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin,
+    R: io::AsyncRead + Unpin,
 {
     let result = match rdr.read_byte_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1271,7 +1271,7 @@ where
 /// CSV `Reader`.
 pub struct ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin,
+    R: io::AsyncRead + Unpin + Send + Sync,
 {
     fut: Option<
         Pin<
@@ -1282,7 +1282,7 @@ where
                             &'r mut AsyncReaderImpl<R>,
                             ByteRecord,
                         ),
-                    > + 'r,
+                    > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1290,7 +1290,7 @@ where
 
 impl<'r, R> ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r,
+    R: io::AsyncRead + Unpin + Send + Sync + 'r,
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1304,7 +1304,7 @@ where
 
 impl<'r, R> Stream for ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin,
+    R: io::AsyncRead + Send + Sync + Unpin,
 {
     type Item = Result<ByteRecord>;
 
@@ -1337,7 +1337,7 @@ async fn read_byte_record<R>(
     mut rec: ByteRecord,
 ) -> (Option<Result<ByteRecord>>, AsyncReaderImpl<R>, ByteRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let result = match rdr.read_byte_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1351,7 +1351,7 @@ where
 /// An owned stream of records as raw bytes.
 pub struct ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fut: Option<
         Pin<
@@ -1362,7 +1362,7 @@ where
                         AsyncReaderImpl<R>,
                         ByteRecord,
                     ),
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1370,7 +1370,7 @@ where
 
 impl<'r, R> ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Send + Sync + Unpin + 'r
 {
     fn new(rdr: AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1384,7 +1384,7 @@ where
 
 impl<'r, R> Stream for ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Send + Sync + Unpin + 'r
 {
     type Item = Result<ByteRecord>;
 
@@ -1420,7 +1420,7 @@ async fn deserialize_record_borrowed<'r, R, D: DeserializeOwned>(
     mut rec: StringRecord,
 ) -> (Option<Result<D>>, &'r mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1437,7 +1437,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     header_fut: Option<
         Pin<
@@ -1447,7 +1447,7 @@ where
                         Result<StringRecord>,
                         &'r mut AsyncReaderImpl<R>,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1461,7 +1461,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1469,7 +1469,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1493,7 +1493,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     type Item = Result<D>;
 
@@ -1547,7 +1547,7 @@ async fn deserialize_record_with_pos_borrowed<'r, R, D: DeserializeOwned>(
     mut rec: StringRecord,
 ) -> (Option<Result<D>>, Position, &'r mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let pos = rdr.position().clone();
     let result = match rdr.read_record(&mut rec).await {
@@ -1565,7 +1565,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     header_fut: Option<
         Pin<
@@ -1575,7 +1575,7 @@ where
                         Result<StringRecord>,
                         &'r mut AsyncReaderImpl<R>,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1590,7 +1590,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1598,7 +1598,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1622,7 +1622,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     type Item = (Result<D>, Position);
 
@@ -1678,7 +1678,7 @@ async fn deserialize_record<R, D: DeserializeOwned>(
     mut rec: StringRecord,
 ) -> (Option<Result<D>>, AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let result = match rdr.read_record(&mut rec).await {
         Err(err) => Some(Err(err)),
@@ -1695,7 +1695,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync 
 {
     header_fut: Option<
         Pin<
@@ -1705,7 +1705,7 @@ where
                         Result<StringRecord>,
                         AsyncReaderImpl<R>,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1719,7 +1719,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1727,7 +1727,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     fn new(mut rdr: AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1751,7 +1751,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     type Item = Result<D>;
 
@@ -1805,7 +1805,7 @@ async fn deserialize_record_with_pos<R, D: DeserializeOwned>(
     mut rec: StringRecord,
 ) -> (Option<Result<D>>, Position, AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin
 {
     let pos = rdr.position().clone();
     let result = match rdr.read_record(&mut rec).await {
@@ -1823,7 +1823,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin
+    R: io::AsyncRead + Unpin + Send + Sync
 {
     header_fut: Option<
         Pin<
@@ -1833,7 +1833,7 @@ where
                         Result<StringRecord>,
                         AsyncReaderImpl<R>,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1848,7 +1848,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + 'r,
+                > + Send + Sync + 'r,
             >,
         >,
     >,
@@ -1856,7 +1856,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     fn new(mut rdr: AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1880,7 +1880,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r
+    R: io::AsyncRead + Unpin + Send + Sync + 'r
 {
     type Item = (Result<D>, Position);
 

@@ -49,7 +49,7 @@ impl AsyncReaderBuilder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn create_deserializer<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncDeserializer<R> {
+    pub fn create_deserializer<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncDeserializer<R> {
         AsyncDeserializer::new(self, rdr)
     }
 }
@@ -143,7 +143,7 @@ pub struct AsyncDeserializer<R>(AsyncReaderImpl<R>);
 
 impl<'r, R> AsyncDeserializer<R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r,
+    R: io::AsyncRead + Unpin + Send + Sync + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
@@ -1440,7 +1440,7 @@ mod tests {
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "Broken reader")))
             }
         }
-        impl std::marker::Unpin for FailingRead {}
+        impl Unpin for FailingRead {}
 
         #[derive(Deserialize)]
         struct Fake;

@@ -39,7 +39,7 @@ impl AsyncReaderBuilder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn create_reader<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncReader<R> {
+    pub fn create_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
     
@@ -48,7 +48,7 @@ impl AsyncReaderBuilder {
         since = "1.0.1",
         note = "Please use AsyncReaderBuilder::create_reader function instead"
     )]
-    pub fn from_reader<R: io::AsyncRead + std::marker::Unpin>(&self, rdr: R) -> AsyncReader<R> {
+    pub fn from_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
 }
@@ -129,7 +129,7 @@ pub struct AsyncReader<R>(AsyncReaderImpl<R>);
 
 impl<'r, R> AsyncReader<R>
 where
-    R: io::AsyncRead + std::marker::Unpin + 'r,
+    R: io::AsyncRead + Unpin + Send + Sync + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
