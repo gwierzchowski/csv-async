@@ -346,6 +346,7 @@ mod tests {
             }
           
             #[test]
+            #[cfg(not(tarpaulin))]
             fn test_on_files_serde_send() {
                 use std::io::Read;
                 use std::hash::Hasher;
