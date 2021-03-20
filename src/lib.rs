@@ -350,8 +350,8 @@ mod tests {
                 use std::io::Read;
                 use std::hash::Hasher;
                 std::fs::create_dir_all("examples/data").unwrap();
-                let file_in  = "examples/data/smallpop_serde.csv";
-                let file_out = "examples/data/smallpop_serde_out.csv";
+                let file_in  = "examples/data/smallpop_serde_send.csv";
+                let file_out = "examples/data/smallpop_serde_send_out.csv";
 
                 // Below code requires / check that deserializers are Send.
                 #[cfg(not(feature = "tokio"))]
