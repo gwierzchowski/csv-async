@@ -344,7 +344,7 @@ mod tests {
                 }
                 Ok(())
             }
-          
+
             #[test]
             fn test_on_files_serde() {
                 use std::io::Read;
@@ -372,6 +372,58 @@ mod tests {
                     }
                 });
                 
+                let mut bytes_in  = vec![];
+                std::fs::File::open(file_in).unwrap().read_to_end(&mut bytes_in).unwrap();
+                let mut hasher_in = std::collections::hash_map::DefaultHasher::new();
+                hasher_in.write(&bytes_in);
+
+                let mut bytes_out = vec![];
+                std::fs::File::open(file_out).unwrap().read_to_end(&mut bytes_out).unwrap();
+                let mut hasher_out = std::collections::hash_map::DefaultHasher::new();
+                hasher_out.write(&bytes_out);
+
+                assert_eq!(hasher_in.finish(), hasher_out.finish(), "Copied file {} is different than source {}", file_out, file_in);
+                
+                std::fs::remove_file(file_in).unwrap();
+                std::fs::remove_file(file_out).unwrap();
+            }
+          
+            #[test]
+            #[cfg(not(tarpaulin))]
+            fn test_on_files_serde_send() {
+                use std::io::Read;
+                use std::hash::Hasher;
+                std::fs::create_dir_all("examples/data").unwrap();
+                let file_in  = "examples/data/smallpop_serde_send.csv";
+                let file_out = "examples/data/smallpop_serde_send_out.csv";
+
+                // Below code requires / check that deserializers are Send.
+                #[cfg(not(feature = "tokio"))]
+                {
+                    let jh = async_std::task::spawn(async move {
+                        if let Err(err) = create_async(file_in).await {
+                            assert!(false, "error running create_async: {}", err);
+                        }
+                        if let Err(err) = copy_async_serde(file_in, file_out).await {
+                            assert!(false, "error running copy_async_serde: {}", err);
+                        }
+                    });
+                    async_std::task::block_on(jh);
+                }
+                #[cfg(feature = "tokio")]
+                {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let jh = rt.spawn(async move {
+                        if let Err(err) = create_async(file_in).await {
+                            assert!(false, "error running create_async: {}", err);
+                        }
+                        if let Err(err) = copy_async_serde(file_in, file_out).await {
+                            assert!(false, "error running copy_async_serde: {}", err);
+                        }
+                    });
+                    rt.block_on(jh).unwrap();
+                }
+
                 let mut bytes_in  = vec![];
                 std::fs::File::open(file_in).unwrap().read_to_end(&mut bytes_in).unwrap();
                 let mut hasher_in = std::collections::hash_map::DefaultHasher::new();
