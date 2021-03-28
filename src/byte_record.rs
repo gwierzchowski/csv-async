@@ -35,7 +35,7 @@ use crate::string_record::StringRecord;
 ///
 /// Two `ByteRecord`s are compared on the basis of their field data. Any
 /// position information associated with the records is ignored.
-#[derive(Clone, Eq)]
+#[derive(Eq)]
 pub struct ByteRecord(Box<ByteRecordInner>);
 
 impl PartialEq for ByteRecord {
@@ -87,7 +87,7 @@ impl fmt::Debug for ByteRecord {
 /// moving a single pointer. The optimization is dubious at best, but does
 /// seem to result in slightly better numbers in microbenchmarks. Methinks this
 /// may heavily depend on the underlying allocator.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 struct ByteRecordInner {
     /// The position of this byte record.
     pos: Option<Position>,
@@ -101,6 +101,20 @@ impl Default for ByteRecord {
     #[inline]
     fn default() -> ByteRecord {
         ByteRecord::new()
+    }
+}
+
+impl Clone for ByteRecord {
+    /// Clone this record, but only copy `fields` up to the end of bounds. 
+    /// This is useful when one wants to copy a record, but not necessarily any
+    /// excess capacity in that record.
+    #[inline]
+    fn clone(&self) -> ByteRecord {
+        let mut br = ByteRecord::new();
+        br.0.pos = self.0.pos.clone();
+        br.0.bounds = self.0.bounds.clone();
+        br.0.fields = self.0.fields[..self.0.bounds.end()].to_vec();
+        br
     }
 }
 

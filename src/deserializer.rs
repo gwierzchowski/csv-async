@@ -557,7 +557,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
         // Read and drop the next field.
         // This code is reached, e.g., when trying to deserialize a header
         // that doesn't exist in the destination struct.
-        let _ = self.next_field()?;
+        let _ = self.next_field_bytes()?;
         visitor.visit_unit()
     }
 }
@@ -913,7 +913,7 @@ mod tests {
         struct Foo;
 
         #[derive(Deserialize, Debug, PartialEq)]
-        struct Bar {};
+        struct Bar {}
 
         let got = de_headers::<Foo>(&[], &[]);
         assert_eq!(got.unwrap(), Foo);

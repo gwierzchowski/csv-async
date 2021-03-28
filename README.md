@@ -1,7 +1,7 @@
 # csv-async
 [![crates.io](https://img.shields.io/crates/v/csv-async)](https://crates.io/crates/csv-async)
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
-[![Version](https://img.shields.io/badge/rustc-1.45+-ab6000.svg)](https://blog.rust-lang.org/2020/07/16/Rust-1.45.0.html)
+[![Version](https://img.shields.io/badge/rustc-1.46+-ab6000.svg)](https://blog.rust-lang.org/2020/08/27/Rust-1.46.0.html)
 
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3ALinux)
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Windows/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3AWindows)
@@ -11,7 +11,7 @@
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate with few exceptions like builder's `create_` functions instead of `from_` as in `csv`.
 
-Some code is borrowed from `csv` crate (synchronized with version 1.1.4 - Nov 2020).
+Some code is borrowed from `csv` crate (synchronized with version 1.1.6 - Mar 2021).
 This package shares CSV parsing routines with `csv` by means of using `csv-core` crate.
 Major version of this crate will be kept in sync with major version of `csv` with which it is API compatible.
 
@@ -105,4 +105,5 @@ Some ideas for future development:
 
 - Create benchmarks, maybe some performance improvements.
 - Things marked as TODO in the code.
+- Support for `smol` asynchronous runtime.
 - Create more examples and tutorial.
