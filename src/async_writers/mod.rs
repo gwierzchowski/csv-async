@@ -72,7 +72,7 @@ impl AsyncWriterBuilder {
     ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
-    ///     let mut wtr = AsyncWriterBuilder::new().from_writer(vec![]);
+    ///     let mut wtr = AsyncWriterBuilder::new().create_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -83,15 +83,6 @@ impl AsyncWriterBuilder {
     /// ```
     pub fn new() -> AsyncWriterBuilder {
         AsyncWriterBuilder::default()
-    }
-    
-    /// Returns csv_core Builder reference.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_core_builder_ref(&self) -> &CoreWriterBuilder {
-        &self.builder
     }
 
     /// The field delimiter to use when writing CSV.
@@ -108,7 +99,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .delimiter(b';')
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -209,24 +200,6 @@ impl AsyncWriterBuilder {
         self
     }
 
-    /// Returns information if writer should write header line.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn does_have_headers(&self) -> bool {
-        self.has_headers
-    }
-
-    /// Returns information if writer is flexible (can write different number of columns in different rows).
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn is_flexible(&self) -> bool {
-        self.flexible
-    }
-
     /// Whether the number of fields in records is allowed to change or not.
     ///
     /// When disabled (which is the default), writing CSV data will return an
@@ -245,7 +218,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .flexible(true)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "b"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -265,7 +238,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .flexible(false)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "b"]).await?;
     ///     let err = wtr.write_record(&["x", "y", "z"]).await.unwrap_err();
     ///     match *err.kind() {
@@ -304,7 +277,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .terminator(Terminator::CRLF)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "b", "c"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -338,7 +311,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .quote_style(QuoteStyle::NonNumeric)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "5", "c"]).await?;
     ///     wtr.write_record(&["3.14", "y", "z"]).await?;
     ///
@@ -361,7 +334,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .quote_style(QuoteStyle::Never)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "foo\nbar", "c"]).await?;
     ///     wtr.write_record(&["g\"h\"i", "y", "z"]).await?;
     ///
@@ -389,7 +362,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .quote(b'\'')
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "foo\nbar", "c"]).await?;
     ///     wtr.write_record(&["g'h'i", "y\"y\"y", "z"]).await?;
     ///
@@ -418,7 +391,7 @@ impl AsyncWriterBuilder {
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .double_quote(false)
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "foo\"bar", "c"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -451,7 +424,7 @@ impl AsyncWriterBuilder {
     ///     let mut wtr = AsyncWriterBuilder::new()
     ///         .double_quote(false)
     ///         .escape(b'$')
-    ///         .from_writer(vec![]);
+    ///         .create_writer(vec![]);
     ///     wtr.write_record(&["a", "foo\"bar", "c"]).await?;
     ///     wtr.write_record(&["x", "y", "z"]).await?;
     ///
@@ -463,15 +436,6 @@ impl AsyncWriterBuilder {
     pub fn escape(&mut self, escape: u8) -> &mut AsyncWriterBuilder {
         self.builder.escape(escape);
         self
-    }
-    
-    /// Returns buffer capacity.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_buffer_capacity(&self) -> usize {
-        self.capacity
     }
 
     /// Set the capacity (in bytes) of the internal buffer used in the CSV

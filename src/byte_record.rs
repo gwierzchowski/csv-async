@@ -338,7 +338,7 @@ impl ByteRecord {
     ///     let mut record = ByteRecord::new();
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .has_headers(false)
-    ///         .from_reader("a,b,c\nx,y,z".as_bytes());
+    ///         .create_reader("a,b,c\nx,y,z".as_bytes());
     ///
     ///     assert!(rdr.read_byte_record(&mut record).await?);
     ///     {

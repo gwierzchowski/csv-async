@@ -93,7 +93,7 @@ impl AsyncReaderBuilder {
     /// Boston,United States,4628910
     /// Concord,United States,42695
     /// ";
-    ///     let mut rdr = AsyncReaderBuilder::new().from_reader(data.as_bytes());
+    ///     let mut rdr = AsyncReaderBuilder::new().create_reader(data.as_bytes());
     ///
     ///     let records = rdr
     ///         .records()
@@ -108,15 +108,6 @@ impl AsyncReaderBuilder {
     /// ```
     pub fn new() -> AsyncReaderBuilder {
         AsyncReaderBuilder::default()
-    }
-    
-    /// Returns csv_core Builder reference.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_core_builder_ref(&self) -> &Box<CoreReaderBuilder> {
-        &self.builder
     }
 
     /// The field delimiter to use when parsing CSV.
@@ -138,7 +129,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .delimiter(b';')
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///
     ///     let records = rdr
     ///         .records()
@@ -152,15 +143,6 @@ impl AsyncReaderBuilder {
     pub fn delimiter(&mut self, delimiter: u8) -> &mut AsyncReaderBuilder {
         self.builder.delimiter(delimiter);
         self
-    }
-    
-    /// Returns information if read file has headers.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_headers_presence(&self) -> bool {
-        self.has_headers
     }
 
     /// Whether to treat the first row as a special header row.
@@ -191,7 +173,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .has_headers(false)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut iter = rdr.records();
     ///
     ///     // Read the first record.
@@ -207,15 +189,6 @@ impl AsyncReaderBuilder {
     pub fn has_headers(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.has_headers = yes;
         self
-    }
-    
-    /// Returns information if read file has headers.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn is_flexible(&self) -> bool {
-        self.flexible
     }
 
     /// Whether the number of fields in records is allowed to change or not.
@@ -242,7 +215,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .flexible(true)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States"]);
     ///     Ok(())
@@ -269,7 +242,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .flexible(false)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///
     ///     let mut records = rdr.records();
     ///     match records.next().await {
@@ -300,15 +273,6 @@ impl AsyncReaderBuilder {
     pub fn flexible(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.flexible = yes;
         self
-    }
-    
-    /// Returns information if read file has headers.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_trim_option(&self) -> Trim {
-        self.trim
     }
     
     /// If set, CSV records' stream will end when first i/o error happens. 
@@ -358,7 +322,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .trim(Trim::All)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let records = rdr
     ///         .records()
     ///         .map(Result::unwrap)
@@ -393,7 +357,7 @@ impl AsyncReaderBuilder {
     ///     let data = "city,country,pop$Boston,United States,4628910";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .terminator(Terminator::Any(b'$'))
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut iter = rdr.records();
     ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(iter.next().await.is_none());
@@ -424,7 +388,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .quote(b'\'')
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut iter = rdr.records();
     ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(iter.next().await.is_none());
@@ -458,7 +422,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .escape(Some(b'\\'))
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\" States", "4628910"]);
     ///     Ok(())
@@ -489,7 +453,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .double_quote(false)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "The \"United\"\" States\"", "4628910"]);
     ///     Ok(())
@@ -520,7 +484,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .quoting(false)
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "\"The United States", "4628910"]);
     ///     Ok(())
@@ -554,7 +518,7 @@ impl AsyncReaderBuilder {
     /// ";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .comment(Some(b'#'))
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(records.next().await.is_none());
@@ -585,7 +549,7 @@ impl AsyncReaderBuilder {
     /// city\x1Fcountry\x1Fpop\x1EBoston\x1FUnited States\x1F4628910";
     ///     let mut rdr = AsyncReaderBuilder::new()
     ///         .ascii()
-    ///         .from_reader(data.as_bytes());
+    ///         .create_reader(data.as_bytes());
     ///     let mut records = rdr.byte_records();
     ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
     ///     assert!(records.next().await.is_none());
@@ -595,15 +559,6 @@ impl AsyncReaderBuilder {
     pub fn ascii(&mut self) -> &mut AsyncReaderBuilder {
         self.builder.ascii();
         self
-    }
-    
-    /// Returns buffer capacity.
-    #[deprecated(
-        since = "1.0.1",
-        note = "This getter is no longer needed and will be removed"
-    )]
-    pub fn get_buffer_capacity(&self) -> usize {
-        self.capacity
     }
 
     /// Set the capacity (in bytes) of the buffer used in the CSV reader.

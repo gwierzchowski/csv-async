@@ -41,15 +41,6 @@ impl AsyncReaderBuilder {
     pub fn create_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
-    
-    /// Build a CSV parser from this configuration that reads data from `rdr`.
-    #[deprecated(
-        since = "1.0.1",
-        note = "Please use AsyncReaderBuilder::create_reader function instead"
-    )]
-    pub fn from_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
-        AsyncReader::new(self, rdr)
-    }
 }
 
 /// A already configured CSV reader for `tokio` runtime.
@@ -60,7 +51,7 @@ impl AsyncReaderBuilder {
 ///
 /// # Configuration
 ///
-/// A CSV reader has convenient constructor method `from_reader`.
+/// A CSV reader has convenient constructor method `create_reader`.
 /// However, if you want to configure the CSV reader to use
 /// a different delimiter or quote character (among many other things), then
 /// you should use a [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html) to construct
@@ -79,7 +70,7 @@ impl AsyncReaderBuilder {
 /// ";
 ///     let mut rdr = AsyncReaderBuilder::new()
 ///         .delimiter(b';')
-///         .from_reader(data.as_bytes());
+///         .create_reader(data.as_bytes());
 ///
 ///     let mut records = rdr.records();
 ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);

@@ -42,15 +42,6 @@ impl AsyncReaderBuilder {
     pub fn create_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
-    
-    /// Build a CSV parser from this configuration that reads data from `rdr`.
-    #[deprecated(
-        since = "1.0.1",
-        note = "Please use AsyncReaderBuilder::create_reader function instead"
-    )]
-    pub fn from_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
-        AsyncReader::new(self, rdr)
-    }
 }
 
 /// A already configured CSV reader.
@@ -80,7 +71,7 @@ impl AsyncReaderBuilder {
 /// ";
 ///     let mut rdr = AsyncReaderBuilder::new()
 ///         .delimiter(b';')
-///         .from_reader(data.as_bytes());
+///         .create_reader(data.as_bytes());
 ///
 ///     let mut records = rdr.records();
 ///     assert_eq!(records.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);

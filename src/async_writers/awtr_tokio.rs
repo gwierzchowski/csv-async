@@ -33,15 +33,6 @@ impl AsyncWriterBuilder {
     pub fn create_writer<W: AsyncWrite + Unpin>(&self, wtr: W) -> AsyncWriter<W> {
         AsyncWriter::new(self, wtr)
     }
-    
-    /// Build a CSV writer from this configuration that writes data to `wtr`.
-    #[deprecated(
-        since = "1.0.1",
-        note = "Please use AsyncWriterBuilder::create_writer function instead"
-    )]
-    pub fn from_writer<W: AsyncWrite + Unpin>(&self, wtr: W) -> AsyncWriter<W> {
-        AsyncWriter::new(self, wtr)
-    }
 }
 
 /// A already configured CSV writer for `tokio` runtime.

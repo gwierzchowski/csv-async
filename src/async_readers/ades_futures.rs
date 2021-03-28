@@ -63,7 +63,7 @@ impl AsyncReaderBuilder {
 /// # Configuration
 ///
 /// A CSV deserializer has convenient constructor method `from_reader`.
-/// and `from_reader`. However, if you want to configure the CSV deserializer to use
+/// However, if you want to configure the CSV deserializer to use
 /// a different delimiter or quote character (among many other things), then
 /// you should use a [`AsyncReaderBuilder`](struct.AsyncReaderBuilder.html) to construct
 /// a `AsyncDeserializer`. For example, to change the field delimiter:
