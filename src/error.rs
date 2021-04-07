@@ -119,6 +119,8 @@ impl ErrorKind {
         match *self {
             ErrorKind::Utf8 { ref pos, .. } => pos.as_ref(),
             ErrorKind::UnequalLengths { ref pos, .. } => pos.as_ref(),
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize{ ref pos, .. } => pos.as_ref(),
             _ => None,
         }
     }
@@ -143,6 +145,10 @@ impl StdError for Error {
             ErrorKind::Utf8 { ref err, .. } => Some(err),
             ErrorKind::UnequalLengths { .. } => None,
             ErrorKind::Seek => None,
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Serialize { .. } => None,
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize{ ref err, .. } => Some(err),
             _ => unreachable!(),
         }
     }
