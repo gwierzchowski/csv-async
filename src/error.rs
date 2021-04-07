@@ -195,6 +195,27 @@ impl fmt::Display for Error {
                  when the parser was seeked before the first record \
                  could be read"
             ),
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Serialize(ref msg) => {
+                write!(f, "CSV error: {}", msg)
+            }
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize { pos: None, ref err } => {
+                write!(f, "CSV deserialize error: {}", err)
+            }
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize {
+                pos: Some(ref pos),
+                ref err,
+            } => write!(
+                f,
+                "CSV parse error: record {} \
+                 (line {}, byte: {}): {}",
+                pos.record(),
+                pos.line(),
+                pos.byte(),
+                err
+            ),
             _ => unreachable!(),
         }
     }
