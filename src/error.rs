@@ -119,6 +119,8 @@ impl ErrorKind {
         match *self {
             ErrorKind::Utf8 { ref pos, .. } => pos.as_ref(),
             ErrorKind::UnequalLengths { ref pos, .. } => pos.as_ref(),
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize{ ref pos, .. } => pos.as_ref(),
             _ => None,
         }
     }
@@ -143,6 +145,10 @@ impl StdError for Error {
             ErrorKind::Utf8 { ref err, .. } => Some(err),
             ErrorKind::UnequalLengths { .. } => None,
             ErrorKind::Seek => None,
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Serialize { .. } => None,
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize{ ref err, .. } => Some(err),
             _ => unreachable!(),
         }
     }
@@ -194,6 +200,27 @@ impl fmt::Display for Error {
                 "CSV error: cannot access headers of CSV data \
                  when the parser was seeked before the first record \
                  could be read"
+            ),
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Serialize(ref msg) => {
+                write!(f, "CSV error: {}", msg)
+            }
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize { pos: None, ref err } => {
+                write!(f, "CSV deserialize error: {}", err)
+            }
+            #[cfg(feature = "with_serde")]
+            ErrorKind::Deserialize {
+                pos: Some(ref pos),
+                ref err,
+            } => write!(
+                f,
+                "CSV parse error: record {} \
+                 (line {}, byte: {}): {}",
+                pos.record(),
+                pos.line(),
+                pos.byte(),
+                err
             ),
             _ => unreachable!(),
         }
