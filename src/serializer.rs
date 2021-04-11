@@ -1096,12 +1096,16 @@ mod tests {
         let row = Foo::X(false, 42, "hi".to_string());
         let err = serialize_err(row.clone());
         match *err.kind() {
-            ErrorKind::Serialize(_) => {}
+            ErrorKind::Serialize(_) => {
+                assert!(err.to_string().starts_with("CSV serialize error:"));
+            }
             ref x => panic!("expected ErrorKind::Serialize but got '{:?}'", x),
         }
         let err = serialize_header_err(row.clone());
         match *err.kind() {
-            ErrorKind::Serialize(_) => {}
+            ErrorKind::Serialize(_) => {
+                assert!(err.to_string().starts_with("CSV serialize error:"));
+            }
             ref x => panic!("expected ErrorKind::Serialize but got '{:?}'", x),
         }
     }

@@ -806,7 +806,7 @@ mod tests {
 
     use super::{deserialize_byte_record, deserialize_string_record};
     use crate::byte_record::ByteRecord;
-    use crate::error::Error;
+    use crate::error::{Error, ErrorKind};
     use crate::string_record::StringRecord;
 
     fn de<D: DeserializeOwned>(fields: &[&str]) -> Result<D, Error> {
@@ -865,7 +865,12 @@ mod tests {
             y: i32,
             x: String,
         }
-        assert!(de_headers::<Foo>(&["y", "z"], &["42", "1.3"],).is_err());
+        let got = de_headers::<Foo>(&["y", "z"], &["42", "1.3"],);
+        assert!(got.is_err());
+        let got = got.unwrap_err();
+        assert!(match got.kind() { ErrorKind::Deserialize {..} => true, _ => false });
+        // assert_eq!(got.position().unwrap().line(), 1); // got.position() is usually None - TODO - improve
+        assert!(got.to_string().starts_with("CSV deserialize error:"));
     }
 
     #[test]

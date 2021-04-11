@@ -203,7 +203,7 @@ impl fmt::Display for Error {
             ),
             #[cfg(feature = "with_serde")]
             ErrorKind::Serialize(ref msg) => {
-                write!(f, "CSV error: {}", msg)
+                write!(f, "CSV serialize error: {}", msg)
             }
             #[cfg(feature = "with_serde")]
             ErrorKind::Deserialize { pos: None, ref err } => {
@@ -215,7 +215,7 @@ impl fmt::Display for Error {
                 ref err,
             } => write!(
                 f,
-                "CSV parse error: record {} \
+                "CSV deserialize error: record {} \
                  (line {}, byte: {}): {}",
                 pos.record(),
                 pos.line(),
