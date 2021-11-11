@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "1.2.1"
+version = "1.2.2"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
 edition = "2018"
@@ -31,11 +31,11 @@ futures = "0.3"
 itoa = { version = "0.4", optional = true }
 ryu  = { version = "1", optional = true }
 serde = { version = "1", optional = true }
-tokio1 = { package = "tokio", version = "1", features = ["io-util", "fs"], optional = true }
+tokio1 = { package = "tokio", version = "1.6", features = ["io-util", "fs"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
 
 [dev-dependencies]
 async-std = "1"
 indoc = "1"
 serde = { version = "1", features = ["derive"] }
-tokio1 = { package = "tokio", version = "1", features = ["rt", "rt-multi-thread"] }
+tokio1 = { package = "tokio", version = "1.6", features = ["rt", "rt-multi-thread"] }

@@ -5,8 +5,7 @@ use std::task::{Context, Poll};
 
 cfg_if::cfg_if! {
 if #[cfg(feature = "tokio")] {
-    use std::io::SeekFrom;
-    use tokio::io::{self, AsyncBufRead};
+    use tokio::io::{self, AsyncBufRead, AsyncSeekExt};
     use tokio_stream::Stream;
 } else {
     use futures::io::{self, AsyncBufRead, AsyncSeekExt};
@@ -969,7 +968,6 @@ where
     }
 }
 
-#[cfg(not(feature = "tokio"))]
 impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
     /// Seeks the underlying reader to the position given.
     ///
@@ -1003,41 +1001,43 @@ impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
         self.state.eof = ReaderEofState::NotEof;
         Ok(())
     }
+
+    /// Seeks the underlying reader to first data record.
+    ///
+    #[cfg(feature = "tokio")]
+    pub async fn rewind(&mut self) -> Result<()> {
+        self.byte_headers().await?;
+        self.state.seeked = false;
+        self.state.headers = None;
+        self.state.first = false;
+        if self.state.cur_pos.byte() == 0 {
+            return Ok(());
+        }
+        self.rdr.rewind().await?;
+        self.core.reset();
+        self.core.set_line(1);
+        self.state.cur_pos.set_byte(0).set_line(1).set_record(0);
+        self.state.eof = ReaderEofState::NotEof;
+        Ok(())
+    }
+    #[cfg(not(feature = "tokio"))]
+    pub async fn rewind(&mut self) -> Result<()> {
+        self.byte_headers().await?;
+        self.state.seeked = false;
+        self.state.headers = None;
+        self.state.first = false;
+        if self.state.cur_pos.byte() == 0 {
+            return Ok(());
+        }
+        self.rdr.seek(io::SeekFrom::Start(0)).await?;
+        self.core.reset();
+        self.core.set_line(1);
+        self.state.cur_pos.set_byte(0).set_line(1).set_record(0);
+        self.state.eof = ReaderEofState::NotEof;
+        Ok(())
+    }
 }
 
-#[cfg(feature = "tokio")]
-#[allow(dead_code)]
-impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
-    /// Attempts to seek to an offset, in bytes, in a stream.
-    ///
-    /// If this function returns successfully, then the job has been submitted.
-    /// To find out when it completes, call `poll_complete`.
-    pub fn start_seek(self: Pin<&mut Self>, _cx: &mut Context, _position: SeekFrom) -> Poll<Result<()>> {
-        // TODO.
-        // For futures we have better luck, because there is:
-        // impl<R: AsyncRead + AsyncSeek> AsyncSeek for BufReader<R>
-        // not the case for tokio, for which we only have implementation for File to look at.
-        unimplemented!()
-    }
-
-    /// Waits for a seek operation to complete.
-    ///
-    /// If the seek operation completed successfully,
-    /// this method returns the new position from the start of the stream.
-    /// That position can be used later with [`SeekFrom::Start`].
-    ///
-    /// # Errors
-    ///
-    /// Seeking to a negative offset is considered an error.
-    ///
-    /// # Panics
-    ///
-    /// Calling this method without calling `start_seek` first is an error.
-    fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<u64>> {
-        // TODO.
-        unimplemented!()
-    }
-}
 
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 //-//////////////////////////////////////////////////////////////////////////////////////////////

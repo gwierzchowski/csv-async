@@ -487,7 +487,7 @@ where
     /// records could be read.
     ///
     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this will never read the first record.
+    /// default), then this will treat initial row as headers and read the first data record.
     ///
     /// This method is useful when you want to read records as fast as
     /// as possible. It's less ergonomic than an iterator, but it permits the
@@ -529,7 +529,7 @@ where
     /// more records could be read.
     ///
     /// If `has_headers` was enabled via a `ReaderBuilder` (which is the
-    /// default), then this will never read the first record.
+    /// default), then this will treat initial row as headers and read the first data record.
     ///
     /// This method is useful when you want to read records as fast as
     /// as possible. It's less ergonomic than an iterator, but it permits the
@@ -772,6 +772,58 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
         pos: Position,
     ) -> Result<()> {
         self.0.seek_raw(seek_from, pos).await
+    }
+
+    /// Rewinds the underlying reader to first data record.
+    ///
+    /// Function is aware of header presence.
+    /// After `rewind` record iterators will return first data record (skipping header if present), while
+    /// after `seek(0)` they will return header row (even if `has_header` is set).
+    /// 
+    /// # Example: Reads the same data multiply times
+    ///
+    /// ```
+    /// use std::error::Error;
+    /// use futures::io;
+    /// use futures::stream::StreamExt;
+    /// use csv_async::AsyncReader;
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let data = "\
+    /// city,country,popcount
+    /// Boston,United States,4628910
+    /// Concord,United States,42695
+    /// ";
+    ///     let mut rdr = AsyncReader::from_reader(io::Cursor::new(data));
+    ///     let mut output = Vec::new();
+    ///     loop {
+    ///         let mut records = rdr.records();
+    ///         while let Some(rec) = records.next().await {
+    ///             output.push(rec?);
+    ///         }
+    ///         if output.len() >= 6 {
+    ///             break;
+    ///         } else {
+    ///             drop(records);
+    ///             rdr.rewind().await?;
+    ///         }
+    ///     }
+    ///     assert_eq!(output, 
+    ///         vec![
+    ///             vec!["Boston", "United States", "4628910"],
+    ///             vec!["Concord", "United States", "42695"],
+    ///             vec!["Boston", "United States", "4628910"],
+    ///             vec!["Concord", "United States", "42695"],
+    ///             vec!["Boston", "United States", "4628910"],
+    ///             vec!["Concord", "United States", "42695"],
+    ///         ]);
+    ///     Ok(())
+    /// }
+    /// ```
+    #[inline]
+    pub async fn rewind(&mut self) -> Result<()> {
+        self.0.rewind().await
     }
 }
 
@@ -1217,6 +1269,31 @@ mod tests {
             let mut rdr = AsyncReaderBuilder::new().create_reader(io::Cursor::new(data));
             rdr.seek(Position::new()).await.unwrap();
             assert_eq!("foo", &rdr.headers().await.unwrap()[0]);
+        });
+    }
+
+    #[test]
+    fn rewind() {
+        task::block_on(async {
+            let data = b("foo,bar,baz\na,b,c\nd,e,f\ng,h,i");
+            let mut rdr = AsyncReaderBuilder::new().create_reader(io::Cursor::new(data));
+            // rdr.seek(newpos(18, 3, 2)).await.unwrap();
+
+            let mut rec = StringRecord::new();
+            assert!(rdr.read_record(&mut rec).await.unwrap());
+            assert_eq!(3, rec.len());
+            assert_eq!("a", &rec[0]);
+
+            // assert_eq!(18, rdr.position().byte());
+            assert!(rdr.read_record(&mut rec).await.unwrap());
+            assert_eq!(3, rec.len());
+            assert_eq!("d", &rec[0]);
+
+            rdr.rewind().await.unwrap();
+
+            assert!(rdr.read_record(&mut rec).await.unwrap());
+            assert_eq!(3, rec.len());
+            assert_eq!("a", &rec[0]);
         });
     }
 
