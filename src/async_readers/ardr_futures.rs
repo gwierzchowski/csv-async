@@ -39,7 +39,7 @@ impl AsyncReaderBuilder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn create_reader<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncReader<R> {
+    pub fn create_reader<R: io::AsyncRead + Unpin + Send>(&self, rdr: R) -> AsyncReader<R> {
         AsyncReader::new(self, rdr)
     }
 }
@@ -120,7 +120,7 @@ pub struct AsyncReader<R>(AsyncReaderImpl<R>);
 
 impl<'r, R> AsyncReader<R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r,
+    R: io::AsyncRead + Unpin + Send + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
@@ -779,7 +779,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     /// Function is aware of header presence.
     /// After `rewind` record iterators will return first data record (skipping header if present), while
     /// after `seek(0)` they will return header row (even if `has_header` is set).
-    /// 
+    ///
     /// # Example: Reads the same data multiply times
     ///
     /// ```
@@ -809,7 +809,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     ///             rdr.rewind().await?;
     ///         }
     ///     }
-    ///     assert_eq!(output, 
+    ///     assert_eq!(output,
     ///         vec![
     ///             vec!["Boston", "United States", "4628910"],
     ///             vec!["Concord", "United States", "42695"],
@@ -831,7 +831,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
 mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    
+
     use futures::io;
     use futures::stream::StreamExt;
     use async_std::task;
@@ -1379,7 +1379,7 @@ mod tests {
             }
         }
         impl std::marker::Unpin for FailingRead {}
-    
+
         task::block_on(async {
             let mut records = AsyncReader::from_reader(FailingRead).into_records();
             let first_record = records.next().await;
@@ -1388,7 +1388,7 @@ mod tests {
             );
             assert!(records.next().await.is_none());
         });
-    
+
         task::block_on(async {
             let mut records = AsyncReaderBuilder::new()
                 .end_on_io_error(false)

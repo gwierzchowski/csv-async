@@ -11,7 +11,7 @@ if #[cfg(feature = "tokio")] {
     use futures::io::{self, AsyncBufRead, AsyncSeekExt};
     use futures::stream::Stream;
 }}
-    
+
 use csv_core::{ReaderBuilder as CoreReaderBuilder};
 use csv_core::{Reader as CoreReader};
 #[cfg(feature = "with_serde")]
@@ -28,10 +28,10 @@ if #[cfg(feature = "tokio")] {
 } else {
     pub mod ardr_futures;
 }}
-    
+
 #[cfg(all(feature = "with_serde", not(feature = "tokio")))]
 pub mod ades_futures;
-    
+
 #[cfg(all(feature = "with_serde", feature = "tokio"))]
 pub mod ades_tokio;
 
@@ -180,7 +180,7 @@ impl AsyncReaderBuilder {
     ///
     ///     // Read the second record.
     ///     assert_eq!(iter.next().await.unwrap()?, vec!["Boston", "United States", "4628910"]);
-    /// 
+    ///
     ///     assert!(iter.next().await.is_none());
     ///     Ok(())
     /// }
@@ -273,12 +273,12 @@ impl AsyncReaderBuilder {
         self.flexible = yes;
         self
     }
-    
-    /// If set, CSV records' stream will end when first i/o error happens. 
+
+    /// If set, CSV records' stream will end when first i/o error happens.
     /// Otherwise CSV reader will continue trying to read from underlying reader.
     /// For sample, please see unit test `behavior_on_io_errors` in following
     /// [source file](https://github.com/gwierzchowski/csv-async/blob/master/src/async_readers/ardr_futures.rs).
-    /// 
+    ///
     /// By default this option is set.
     pub fn end_on_io_error(&mut self, yes: bool) -> &mut AsyncReaderBuilder {
         self.end_on_io_error = yes;
@@ -607,7 +607,7 @@ pub struct ReaderState {
     first: bool,
     /// Whether the reader has been seek or not.
     seeked: bool,
-    /// If set, CSV records' stream will end when first i/o error happens. 
+    /// If set, CSV records' stream will end when first i/o error happens.
     /// Otherwise it will continue trying to read from underlying reader.
     end_on_io_error: bool,
     /// IO errors on the underlying reader will be considered as an EOF for
@@ -673,7 +673,7 @@ impl ReaderState {
     }
 }
 /// CSV async reader internal implementation used by both record reader and deserializer.
-/// 
+///
 #[derive(Debug)]
 pub struct AsyncReaderImpl<R> {
     /// The underlying CSV parser.
@@ -705,7 +705,7 @@ impl<'a, R: AsyncBufRead + ?Sized + Unpin> FillBuf<'a, R> {
 
 impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
     type Output = io::Result<usize>;
-    
+
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match Pin::new(&mut *self.reader).poll_fill_buf(cx) {
             Poll::Ready(res) => {
@@ -717,7 +717,7 @@ impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
             Poll::Pending => Poll::Pending
         }
     }
-} 
+}
 
 impl<'r, R> AsyncReaderImpl<R>
 where
@@ -1064,7 +1064,7 @@ where
 /// CSV `Reader`.
 pub struct StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fut: Option<
         Pin<
@@ -1075,7 +1075,7 @@ where
                             &'r mut AsyncReaderImpl<R>,
                             StringRecord,
                         ),
-                    > + Send + Sync + 'r,
+                    > + Send + 'r,
             >,
         >,
     >,
@@ -1083,7 +1083,7 @@ where
 
 impl<'r, R> StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1097,7 +1097,7 @@ where
 
 impl<'r, R> Stream for StringRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     type Item = Result<StringRecord>;
 
@@ -1144,7 +1144,7 @@ where
 /// An owned stream of records as strings.
 pub struct StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fut: Option<
         Pin<
@@ -1155,7 +1155,7 @@ where
                         AsyncReaderImpl<R>,
                         StringRecord,
                     ),
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1163,7 +1163,7 @@ where
 
 impl<'r, R> StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     fn new(rdr: AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1177,7 +1177,7 @@ where
 
 impl<'r, R> Stream for StringRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     type Item = Result<StringRecord>;
 
@@ -1226,7 +1226,7 @@ where
 /// CSV `Reader`.
 pub struct ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync,
+    R: io::AsyncRead + Unpin + Send,
 {
     fut: Option<
         Pin<
@@ -1237,7 +1237,7 @@ where
                             &'r mut AsyncReaderImpl<R>,
                             ByteRecord,
                         ),
-                    > + Send + Sync + 'r,
+                    > + Send + 'r,
             >,
         >,
     >,
@@ -1245,7 +1245,7 @@ where
 
 impl<'r, R> ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r,
+    R: io::AsyncRead + Unpin + Send + 'r,
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1259,7 +1259,7 @@ where
 
 impl<'r, R> Stream for ByteRecordsStream<'r, R>
 where
-    R: io::AsyncRead + Send + Sync + Unpin,
+    R: io::AsyncRead + Send + Unpin,
 {
     type Item = Result<ByteRecord>;
 
@@ -1306,7 +1306,7 @@ where
 /// An owned stream of records as raw bytes.
 pub struct ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fut: Option<
         Pin<
@@ -1317,7 +1317,7 @@ where
                         AsyncReaderImpl<R>,
                         ByteRecord,
                     ),
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1325,7 +1325,7 @@ where
 
 impl<'r, R> ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Send + Sync + Unpin + 'r
+    R: io::AsyncRead + Send + Unpin + 'r
 {
     fn new(rdr: AsyncReaderImpl<R>) -> Self {
         Self {
@@ -1339,7 +1339,7 @@ where
 
 impl<'r, R> Stream for ByteRecordsIntoStream<'r, R>
 where
-    R: io::AsyncRead + Send + Sync + Unpin + 'r
+    R: io::AsyncRead + Send + Unpin + 'r
 {
     type Item = Result<ByteRecord>;
 
@@ -1368,7 +1368,7 @@ where
 
 cfg_if::cfg_if! {
 if #[cfg(feature = "with_serde")] {
-    
+
 async fn deserialize_record_borrowed<'r, R, D: DeserializeOwned>(
     rdr: &'r mut AsyncReaderImpl<R>,
     headers: Option<StringRecord>,
@@ -1392,7 +1392,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     header_fut: Option<
         Pin<
@@ -1402,7 +1402,7 @@ where
                         Result<StringRecord>,
                         &'r mut AsyncReaderImpl<R>,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1416,7 +1416,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1424,7 +1424,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1448,7 +1448,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     type Item = Result<D>;
 
@@ -1520,7 +1520,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     header_fut: Option<
         Pin<
@@ -1530,7 +1530,7 @@ where
                         Result<StringRecord>,
                         &'r mut AsyncReaderImpl<R>,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1545,7 +1545,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1553,7 +1553,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     fn new(rdr: &'r mut AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1577,7 +1577,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     type Item = (Result<D>, Position);
 
@@ -1623,7 +1623,7 @@ where
         }
     }
 }
-    
+
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1650,7 +1650,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync 
+    R: io::AsyncRead + Unpin + Send
 {
     header_fut: Option<
         Pin<
@@ -1660,7 +1660,7 @@ where
                         Result<StringRecord>,
                         AsyncReaderImpl<R>,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1674,7 +1674,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1682,7 +1682,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     fn new(mut rdr: AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1706,7 +1706,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsIntoStream<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     type Item = Result<D>;
 
@@ -1778,7 +1778,7 @@ where
 /// type, and `D` refers to the type that this stream will deserialize a record into.
 pub struct DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync
+    R: io::AsyncRead + Unpin + Send
 {
     header_fut: Option<
         Pin<
@@ -1788,7 +1788,7 @@ where
                         Result<StringRecord>,
                         AsyncReaderImpl<R>,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1803,7 +1803,7 @@ where
                         Option<StringRecord>,
                         StringRecord,
                     )
-                > + Send + Sync + 'r,
+                > + Send + 'r,
             >,
         >,
     >,
@@ -1811,7 +1811,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     fn new(mut rdr: AsyncReaderImpl<R>) -> Self {
         let has_headers = rdr.has_headers();
@@ -1835,7 +1835,7 @@ where
 
 impl<'r, R, D: DeserializeOwned + 'r> Stream for DeserializeRecordsIntoStreamPos<'r, R, D>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r
+    R: io::AsyncRead + Unpin + Send + 'r
 {
     type Item = (Result<D>, Position);
 
