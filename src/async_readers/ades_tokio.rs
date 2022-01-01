@@ -26,7 +26,7 @@ impl AsyncReaderBuilder {
     /// use csv_async::AsyncReaderBuilder;
     /// use serde::Deserialize;
     /// use tokio_stream::StreamExt;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -75,7 +75,7 @@ impl AsyncReaderBuilder {
 /// use csv_async::AsyncReaderBuilder;
 /// use serde::Deserialize;
 /// use tokio_stream::StreamExt;
-///
+/// 
 /// #[derive(Debug, Deserialize, Eq, PartialEq)]
 /// struct Row {
 ///     city: String,
@@ -164,7 +164,7 @@ where
     /// use csv_async::AsyncDeserializer;
     /// use serde::Deserialize;
     /// use tokio_stream::StreamExt;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -203,7 +203,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize::<RecordType>();`
     ///
@@ -399,7 +399,7 @@ where
     /// Each item yielded by this stream is a `(Result<D, Error>, Position)`.
     /// Therefore, in order to access the record, callers must handle the
     /// possibility of error (typically with `?`).
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize_with_pos::<RecordType>();`
     ///
@@ -483,7 +483,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.into_deserialize::<RecordType>();`
     ///
@@ -575,7 +575,7 @@ where
     /// use csv_async::AsyncDeserializer;
     /// use serde::Deserialize;
     /// use tokio_stream::StreamExt;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -652,7 +652,7 @@ where
     ///     #[serde(rename = "pop")]
     ///     population: u64,
     /// }
-    ///
+    /// 
     /// # fn main() { tokio::runtime::Runtime::new().unwrap().block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = indoc::indoc! {"
@@ -839,7 +839,7 @@ where
     }
 
     /// Return the current position of this CSV deserializer.
-    ///
+    /// 
     /// Because of borrowing rules this function can only be used when there is no
     /// alive deserializer (which borrows mutable reader).
     /// To know position during deserialization, `deserialize_with_pos` should be
@@ -883,7 +883,7 @@ where
     ///     }
     ///     drop(iter); // releases rdr borrow by iter
     ///     let pos_at_end = rdr.position();
-    ///
+    /// 
     ///     assert_eq!(pos_at_boston.byte(),  22);
     ///     assert_eq!(pos_at_boston.line(),   2);
     ///     assert_eq!(pos_at_boston.record(), 1);
@@ -1444,7 +1444,7 @@ mod tests {
 
         #[derive(Deserialize)]
         struct Fake;
-
+    
         Runtime::new().unwrap().block_on(async {
             let mut record_results = AsyncDeserializer::from_reader(FailingRead).into_deserialize::<Fake>();
             let first_result = record_results.next().await;

@@ -25,7 +25,7 @@ impl AsyncReaderBuilder {
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -73,7 +73,7 @@ impl AsyncReaderBuilder {
 /// use futures::stream::StreamExt;
 /// use serde::Deserialize;
 /// use csv_async::AsyncReaderBuilder;
-///
+/// 
 /// #[derive(Debug, Deserialize, Eq, PartialEq)]
 /// struct Row {
 ///     city: String,
@@ -161,7 +161,7 @@ where
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -200,7 +200,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize::<RecordTyme>();`
     ///
@@ -476,7 +476,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.into_deserialize::<RecordTyme>();`
     ///
@@ -566,7 +566,7 @@ where
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
-    ///
+    /// 
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -642,7 +642,7 @@ where
     ///     #[serde(rename = "pop")]
     ///     population: u64,
     /// }
-    ///
+    /// 
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = indoc::indoc! {"
@@ -829,7 +829,7 @@ where
     }
 
     /// Return the current position of this CSV deserializer.
-    ///
+    /// 
     /// Because of borrowing rules this function can only be used when there is no
     /// alive deserializer (which borrows mutable reader).
     /// To know position during deserialization, `deserialize_with_pos` should be
@@ -872,7 +872,7 @@ where
     ///     }
     ///     drop(iter); // releases rdr borrow by iter
     ///     let pos_at_end = rdr.position();
-    ///
+    /// 
     ///     assert_eq!(pos_at_boston.byte(),  22);
     ///     assert_eq!(pos_at_boston.line(),   2);
     ///     assert_eq!(pos_at_boston.record(), 1);
@@ -1595,7 +1595,7 @@ mod tests {
 
         #[derive(Deserialize)]
         struct Fake;
-
+    
         task::block_on(async {
             let mut records = AsyncDeserializer::from_reader(FailingRead).into_deserialize::<Fake>();
             let first_record = records.next().await;
@@ -1604,7 +1604,7 @@ mod tests {
             );
             assert!(records.next().await.is_none());
         });
-
+    
         task::block_on(async {
             let mut records = AsyncReaderBuilder::new()
                 .end_on_io_error(false)

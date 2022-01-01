@@ -779,7 +779,7 @@ impl<R: io::AsyncRead + io::AsyncSeek + std::marker::Unpin> AsyncReader<R> {
     /// Function is aware of header presence.
     /// After `rewind` record iterators will return first data record (skipping header if present), while
     /// after `seek(0)` they will return header row (even if `has_header` is set).
-    ///
+    /// 
     /// # Example: Reads the same data multiply times
     ///
     /// ```
@@ -1379,7 +1379,7 @@ mod tests {
             }
         }
         impl std::marker::Unpin for FailingRead {}
-
+    
         task::block_on(async {
             let mut records = AsyncReader::from_reader(FailingRead).into_records();
             let first_record = records.next().await;
@@ -1388,7 +1388,7 @@ mod tests {
             );
             assert!(records.next().await.is_none());
         });
-
+    
         task::block_on(async {
             let mut records = AsyncReaderBuilder::new()
                 .end_on_io_error(false)
