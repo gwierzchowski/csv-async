@@ -25,7 +25,7 @@ impl AsyncReaderBuilder {
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncReaderBuilder;
-    /// 
+    ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -48,7 +48,7 @@ impl AsyncReaderBuilder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn create_deserializer<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncDeserializer<R> {
+    pub fn create_deserializer<R: io::AsyncRead + Unpin + Send>(&self, rdr: R) -> AsyncDeserializer<R> {
         AsyncDeserializer::new(self, rdr)
     }
 }
@@ -57,7 +57,7 @@ impl AsyncReaderBuilder {
 ///
 /// A CSV deserializer takes as input CSV data and transforms that into standard Rust
 /// values. The reader reads CSV data is as a sequence of records,
-/// where a record is either a sequence of string fields or structure with derived 
+/// where a record is either a sequence of string fields or structure with derived
 /// `serde::Deserialize` interface.
 ///
 /// # Configuration
@@ -73,7 +73,7 @@ impl AsyncReaderBuilder {
 /// use futures::stream::StreamExt;
 /// use serde::Deserialize;
 /// use csv_async::AsyncReaderBuilder;
-/// 
+///
 /// #[derive(Debug, Deserialize, Eq, PartialEq)]
 /// struct Row {
 ///     city: String,
@@ -93,8 +93,8 @@ impl AsyncReaderBuilder {
 ///
 ///     let mut records = rdr.deserialize::<Row>();
 ///     assert_eq!(records.next().await.unwrap()?,
-///                Row {city: "Boston".to_string(), 
-///                     country: "United States".to_string(), 
+///                Row {city: "Boston".to_string(),
+///                     country: "United States".to_string(),
 ///                     pop: 4628910 });
 ///     Ok(())
 /// }
@@ -141,7 +141,7 @@ pub struct AsyncDeserializer<R>(AsyncReaderImpl<R>);
 
 impl<'r, R> AsyncDeserializer<R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r,
+    R: io::AsyncRead + Unpin + Send + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
@@ -161,7 +161,7 @@ where
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
-    /// 
+    ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -200,7 +200,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    /// 
+    ///
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize::<RecordTyme>();`
     ///
@@ -387,13 +387,13 @@ where
         DeserializeRecordsStream::new(& mut self.0)
     }
 
-    /// Returns a borrowed stream over pairs of deserialized record and position 
+    /// Returns a borrowed stream over pairs of deserialized record and position
     /// in reader stream before record read.
     ///
     /// Each item yielded by this stream is a `(Result<D, Error>, Position)`.
     /// Therefore, in order to access the record, callers must handle the
     /// possibility of error (typically with `?`).
-    /// 
+    ///
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize_with_pos::<RecordTyme>();`
     ///
@@ -476,7 +476,7 @@ where
     /// if `has_headers` is enabled, then deserializing into a struct will
     /// automatically align the values in each row to the fields of a struct
     /// based on the header row.
-    /// 
+    ///
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.into_deserialize::<RecordTyme>();`
     ///
@@ -531,7 +531,7 @@ where
         DeserializeRecordsIntoStream::new(self.0)
     }
 
-    /// Returns a owned stream over pairs of deserialized record and position 
+    /// Returns a owned stream over pairs of deserialized record and position
     /// in reader stream before record read.
     ///
     #[inline]
@@ -566,7 +566,7 @@ where
     /// use futures::stream::StreamExt;
     /// use serde::Deserialize;
     /// use csv_async::AsyncDeserializer;
-    /// 
+    ///
     /// #[derive(Debug, Deserialize, Eq, PartialEq)]
     /// struct Row {
     ///     city: String,
@@ -593,9 +593,9 @@ where
     ///
     ///     {
     ///     let mut records = rdr.deserialize::<Row>();
-    ///     assert_eq!(records.next().await.unwrap()?, 
-    ///                Row {city: "Boston".to_string(), 
-    ///                     country: "United States".to_string(), 
+    ///     assert_eq!(records.next().await.unwrap()?,
+    ///                Row {city: "Boston".to_string(),
+    ///                     country: "United States".to_string(),
     ///                     pop: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
@@ -642,7 +642,7 @@ where
     ///     #[serde(rename = "pop")]
     ///     population: u64,
     /// }
-    /// 
+    ///
     /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
     /// async fn example() -> Result<(), Box<dyn Error>> {
     ///     let data = indoc::indoc! {"
@@ -662,9 +662,9 @@ where
     ///
     ///     {
     ///     let mut records = rdr.deserialize::<Row>();
-    ///     assert_eq!(records.next().await.unwrap()?, 
-    ///                Row {city: "Boston".to_string(), 
-    ///                     country: "United States".to_string(), 
+    ///     assert_eq!(records.next().await.unwrap()?,
+    ///                Row {city: "Boston".to_string(),
+    ///                     country: "United States".to_string(),
     ///                     population: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
@@ -829,7 +829,7 @@ where
     }
 
     /// Return the current position of this CSV deserializer.
-    /// 
+    ///
     /// Because of borrowing rules this function can only be used when there is no
     /// alive deserializer (which borrows mutable reader).
     /// To know position during deserialization, `deserialize_with_pos` should be
@@ -872,7 +872,7 @@ where
     ///     }
     ///     drop(iter); // releases rdr borrow by iter
     ///     let pos_at_end = rdr.position();
-    /// 
+    ///
     ///     assert_eq!(pos_at_boston.byte(),  22);
     ///     assert_eq!(pos_at_boston.line(),   2);
     ///     assert_eq!(pos_at_boston.record(), 1);
@@ -1519,7 +1519,7 @@ mod tests {
                 .into_deserialize_with_pos::<Row1>();
 
             let (_, pos) = rdr.next().await.unwrap();
-            assert_eq!(pos.byte(), 0); 
+            assert_eq!(pos.byte(), 0);
             assert_eq!(pos.line(), 1);
             assert_eq!(pos.record(), 0);
 
@@ -1540,7 +1540,7 @@ mod tests {
                 .into_deserialize_with_pos::<Row1>();
 
             let (_, pos) = rdr.next().await.unwrap();
-            assert_eq!(pos.byte(), 6); 
+            assert_eq!(pos.byte(), 6);
             assert_eq!(pos.line(), 2);
             // We could not count header as record, but we keep compatibility with 'csv' crate.
             assert_eq!(pos.record(), 1);
@@ -1595,7 +1595,7 @@ mod tests {
 
         #[derive(Deserialize)]
         struct Fake;
-    
+
         task::block_on(async {
             let mut records = AsyncDeserializer::from_reader(FailingRead).into_deserialize::<Fake>();
             let first_record = records.next().await;
@@ -1604,7 +1604,7 @@ mod tests {
             );
             assert!(records.next().await.is_none());
         });
-    
+
         task::block_on(async {
             let mut records = AsyncReaderBuilder::new()
                 .end_on_io_error(false)
