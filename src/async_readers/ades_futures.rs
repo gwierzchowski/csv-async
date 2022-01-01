@@ -48,7 +48,7 @@ impl AsyncReaderBuilder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn create_deserializer<R: io::AsyncRead + Unpin + Send + Sync>(&self, rdr: R) -> AsyncDeserializer<R> {
+    pub fn create_deserializer<R: io::AsyncRead + Unpin + Send>(&self, rdr: R) -> AsyncDeserializer<R> {
         AsyncDeserializer::new(self, rdr)
     }
 }
@@ -57,7 +57,7 @@ impl AsyncReaderBuilder {
 ///
 /// A CSV deserializer takes as input CSV data and transforms that into standard Rust
 /// values. The reader reads CSV data is as a sequence of records,
-/// where a record is either a sequence of string fields or structure with derived 
+/// where a record is either a sequence of string fields or structure with derived
 /// `serde::Deserialize` interface.
 ///
 /// # Configuration
@@ -93,8 +93,8 @@ impl AsyncReaderBuilder {
 ///
 ///     let mut records = rdr.deserialize::<Row>();
 ///     assert_eq!(records.next().await.unwrap()?,
-///                Row {city: "Boston".to_string(), 
-///                     country: "United States".to_string(), 
+///                Row {city: "Boston".to_string(),
+///                     country: "United States".to_string(),
 ///                     pop: 4628910 });
 ///     Ok(())
 /// }
@@ -141,7 +141,7 @@ pub struct AsyncDeserializer<R>(AsyncReaderImpl<R>);
 
 impl<'r, R> AsyncDeserializer<R>
 where
-    R: io::AsyncRead + Unpin + Send + Sync + 'r,
+    R: io::AsyncRead + Unpin + Send + 'r,
 {
     /// Create a new CSV reader given a builder and a source of underlying
     /// bytes.
@@ -387,7 +387,7 @@ where
         DeserializeRecordsStream::new(& mut self.0)
     }
 
-    /// Returns a borrowed stream over pairs of deserialized record and position 
+    /// Returns a borrowed stream over pairs of deserialized record and position
     /// in reader stream before record read.
     ///
     /// Each item yielded by this stream is a `(Result<D, Error>, Position)`.
@@ -531,7 +531,7 @@ where
         DeserializeRecordsIntoStream::new(self.0)
     }
 
-    /// Returns a owned stream over pairs of deserialized record and position 
+    /// Returns a owned stream over pairs of deserialized record and position
     /// in reader stream before record read.
     ///
     #[inline]
@@ -593,9 +593,9 @@ where
     ///
     ///     {
     ///     let mut records = rdr.deserialize::<Row>();
-    ///     assert_eq!(records.next().await.unwrap()?, 
-    ///                Row {city: "Boston".to_string(), 
-    ///                     country: "United States".to_string(), 
+    ///     assert_eq!(records.next().await.unwrap()?,
+    ///                Row {city: "Boston".to_string(),
+    ///                     country: "United States".to_string(),
     ///                     pop: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
@@ -662,9 +662,9 @@ where
     ///
     ///     {
     ///     let mut records = rdr.deserialize::<Row>();
-    ///     assert_eq!(records.next().await.unwrap()?, 
-    ///                Row {city: "Boston".to_string(), 
-    ///                     country: "United States".to_string(), 
+    ///     assert_eq!(records.next().await.unwrap()?,
+    ///                Row {city: "Boston".to_string(),
+    ///                     country: "United States".to_string(),
     ///                     population: 4628910 });
     ///     assert!(records.next().await.is_none());
     ///     }
@@ -1519,7 +1519,7 @@ mod tests {
                 .into_deserialize_with_pos::<Row1>();
 
             let (_, pos) = rdr.next().await.unwrap();
-            assert_eq!(pos.byte(), 0); 
+            assert_eq!(pos.byte(), 0);
             assert_eq!(pos.line(), 1);
             assert_eq!(pos.record(), 0);
 
@@ -1540,7 +1540,7 @@ mod tests {
                 .into_deserialize_with_pos::<Row1>();
 
             let (_, pos) = rdr.next().await.unwrap();
-            assert_eq!(pos.byte(), 6); 
+            assert_eq!(pos.byte(), 6);
             assert_eq!(pos.line(), 2);
             // We could not count header as record, but we keep compatibility with 'csv' crate.
             assert_eq!(pos.record(), 1);
