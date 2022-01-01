@@ -705,7 +705,7 @@ impl<'a, R: AsyncBufRead + ?Sized + Unpin> FillBuf<'a, R> {
 
 impl<R: AsyncBufRead + ?Sized + Unpin> Future for FillBuf<'_, R> {
     type Output = io::Result<usize>;
-
+    
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match Pin::new(&mut *self.reader).poll_fill_buf(cx) {
             Poll::Ready(res) => {

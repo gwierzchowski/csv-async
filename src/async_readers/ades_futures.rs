@@ -393,7 +393,7 @@ where
     /// Each item yielded by this stream is a `(Result<D, Error>, Position)`.
     /// Therefore, in order to access the record, callers must handle the
     /// possibility of error (typically with `?`).
-    ///
+    /// 
     /// Frequently turbo-fish notation is needed while calling this function:
     /// `rdr.deserialize_with_pos::<RecordTyme>();`
     ///
