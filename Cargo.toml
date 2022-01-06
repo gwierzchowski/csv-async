@@ -1,9 +1,10 @@
 [package]
 name = "csv-async"
-version = "1.2.3"
+version = "1.2.4"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
-edition = "2018"
+edition = "2021"
+rust-version = "1.56"
 keywords = ["csv", "comma", "parser", "async"]
 categories = ["asynchronous", "encoding", "parser-implementations"]
 repository = "https://github.com/gwierzchowski/csv-async"
@@ -28,7 +29,7 @@ bstr = "0.2"
 cfg-if = "1"
 csv-core = "0.1"
 futures = "0.3"
-itoa = { version = "0.4", optional = true }
+itoa = { version = "1", optional = true }
 ryu  = { version = "1", optional = true }
 serde = { version = "1", optional = true }
 tokio1 = { package = "tokio", version = "1.12", features = ["io-util", "fs"], optional = true }
