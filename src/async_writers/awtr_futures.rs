@@ -229,7 +229,6 @@ mod tests {
     use std::task::{Context, Poll};
     
     use futures::io;
-    use async_std::task;
 
     use crate::byte_record::ByteRecord;
     use crate::error::ErrorKind;
@@ -241,200 +240,174 @@ mod tests {
         String::from_utf8(wtr.into_inner().await.unwrap()).unwrap()
     }
 
-    #[test]
-    fn one_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&["a", "b", "c"]).await.unwrap();
+    #[async_std::test]
+    async fn one_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&["a", "b", "c"]).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
     }
 
-    #[test]
-    fn one_string_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&StringRecord::from(vec!["a", "b", "c"])).await.unwrap();
+    #[async_std::test]
+    async fn one_string_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&StringRecord::from(vec!["a", "b", "c"])).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
     }
 
-    #[test]
-    fn one_byte_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+    #[async_std::test]
+    async fn one_byte_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
     }
 
-    #[test]
-    fn raw_one_byte_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+    #[async_std::test]
+    async fn raw_one_byte_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\n");
     }
 
-    #[test]
-    fn one_empty_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&[""]).await.unwrap();
+    #[async_std::test]
+    async fn one_empty_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&[""]).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "\"\"\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "\"\"\n");
     }
 
-    #[test]
-    fn raw_one_empty_record() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
+    #[async_std::test]
+    async fn raw_one_empty_record() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "\"\"\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "\"\"\n");
     }
 
-    #[test]
-    fn two_empty_records() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&[""]).await.unwrap();
-            wtr.write_record(&[""]).await.unwrap();
+    #[async_std::test]
+    async fn two_empty_records() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&[""]).await.unwrap();
+        wtr.write_record(&[""]).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "\"\"\n\"\"\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "\"\"\n\"\"\n");
     }
 
-    #[test]
-    fn raw_two_empty_records() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
-            wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
+    #[async_std::test]
+    async fn raw_two_empty_records() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
+        wtr.write_byte_record(&ByteRecord::from(vec![""])).await.unwrap();
 
-            assert_eq!(wtr_as_string(wtr).await, "\"\"\n\"\"\n");
-        });
+        assert_eq!(wtr_as_string(wtr).await, "\"\"\n\"\"\n");
     }
 
-    #[test]
-    fn unequal_records_bad() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
-            let err = wtr.write_record(&ByteRecord::from(vec!["a"])).await.unwrap_err();
-            match *err.kind() {
-                ErrorKind::UnequalLengths { ref pos, expected_len, len } => {
-                    assert!(pos.is_none());
-                    assert_eq!(expected_len, 3);
-                    assert_eq!(len, 1);
-                }
-                ref x => {
-                    panic!("expected UnequalLengths error, but got '{:?}'", x);
-                }
+    #[async_std::test]
+    async fn unequal_records_bad() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+        let err = wtr.write_record(&ByteRecord::from(vec!["a"])).await.unwrap_err();
+        match *err.kind() {
+            ErrorKind::UnequalLengths { ref pos, expected_len, len } => {
+                assert!(pos.is_none());
+                assert_eq!(expected_len, 3);
+                assert_eq!(len, 1);
             }
-        });
-    }
-
-    #[test]
-    fn raw_unequal_records_bad() {
-        task::block_on(async {
-            let mut wtr = AsyncWriter::from_writer(vec![]);
-            wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
-            let err =
-                wtr.write_byte_record(&ByteRecord::from(vec!["a"])).await.unwrap_err();
-            match *err.kind() {
-                ErrorKind::UnequalLengths { ref pos, expected_len, len } => {
-                    assert!(pos.is_none());
-                    assert_eq!(expected_len, 3);
-                    assert_eq!(len, 1);
-                }
-                ref x => {
-                    panic!("expected UnequalLengths error, but got '{:?}'", x);
-                }
+            ref x => {
+                panic!("expected UnequalLengths error, but got '{:?}'", x);
             }
-        });
+        }
     }
 
-    #[test]
-    fn unequal_records_ok() {
-        task::block_on(async {
-            let mut wtr = AsyncWriterBuilder::new().flexible(true).create_writer(vec![]);
-            wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
-            wtr.write_record(&ByteRecord::from(vec!["a"])).await.unwrap();
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\na\n");
-        });
+    #[async_std::test]
+    async fn raw_unequal_records_bad() {
+        let mut wtr = AsyncWriter::from_writer(vec![]);
+        wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+        let err =
+            wtr.write_byte_record(&ByteRecord::from(vec!["a"])).await.unwrap_err();
+        match *err.kind() {
+            ErrorKind::UnequalLengths { ref pos, expected_len, len } => {
+                assert!(pos.is_none());
+                assert_eq!(expected_len, 3);
+                assert_eq!(len, 1);
+            }
+            ref x => {
+                panic!("expected UnequalLengths error, but got '{:?}'", x);
+            }
+        }
     }
 
-    #[test]
-    fn raw_unequal_records_ok() {
-        task::block_on(async {
-            let mut wtr = AsyncWriterBuilder::new().flexible(true).create_writer(vec![]);
-            wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
-            wtr.write_byte_record(&ByteRecord::from(vec!["a"])).await.unwrap();
-            assert_eq!(wtr_as_string(wtr).await, "a,b,c\na\n");
-        });
+    #[async_std::test]
+    async fn unequal_records_ok() {
+        let mut wtr = AsyncWriterBuilder::new().flexible(true).create_writer(vec![]);
+        wtr.write_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+        wtr.write_record(&ByteRecord::from(vec!["a"])).await.unwrap();
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\na\n");
     }
 
-    #[test]
-    fn full_buffer_should_not_flush_underlying() {
-        task::block_on(async {
-            #[derive(Debug)]
-            struct MarkWriteAndFlush(Vec<u8>);
+    #[async_std::test]
+    async fn raw_unequal_records_ok() {
+        let mut wtr = AsyncWriterBuilder::new().flexible(true).create_writer(vec![]);
+        wtr.write_byte_record(&ByteRecord::from(vec!["a", "b", "c"])).await.unwrap();
+        wtr.write_byte_record(&ByteRecord::from(vec!["a"])).await.unwrap();
+        assert_eq!(wtr_as_string(wtr).await, "a,b,c\na\n");
+    }
 
-            impl MarkWriteAndFlush {
-                fn to_str(self) -> String {
-                    String::from_utf8(self.0).unwrap()
-                }
+    #[async_std::test]
+    async fn full_buffer_should_not_flush_underlying() {
+        #[derive(Debug)]
+        struct MarkWriteAndFlush(Vec<u8>);
+
+        impl MarkWriteAndFlush {
+            fn to_str(self) -> String {
+                String::from_utf8(self.0).unwrap()
+            }
+        }
+
+        impl io::AsyncWrite for MarkWriteAndFlush {
+            fn poll_write(
+                mut self: Pin<&mut Self>,
+                _: &mut Context,
+                buf: &[u8]
+            ) -> Poll<Result<usize, io::Error>> {
+                use std::io::Write;
+                self.0.write(b">").unwrap();
+                let written = self.0.write(buf).unwrap();
+                assert_eq!(written, buf.len());
+                self.0.write(b"<").unwrap();
+                // AsyncWriteExt::write_all panics if write returns more than buf.len()
+                // Poll::Ready(Ok(written + 2))
+                Poll::Ready(Ok(written))
             }
 
-            impl io::AsyncWrite for MarkWriteAndFlush {
-                fn poll_write(
-                    mut self: Pin<&mut Self>,
-                    _: &mut Context,
-                    buf: &[u8]
-                ) -> Poll<Result<usize, io::Error>> {
-                    use std::io::Write;
-                    self.0.write(b">").unwrap();
-                    let written = self.0.write(buf).unwrap();
-                    assert_eq!(written, buf.len());
-                    self.0.write(b"<").unwrap();
-                    // AsyncWriteExt::write_all panics if write returns more than buf.len()
-                    // Poll::Ready(Ok(written + 2))
-                    Poll::Ready(Ok(written))
-                }
-
-                fn poll_flush(mut self: Pin<&mut Self>, _: &mut Context) -> Poll<Result<(), io::Error>> {
-                    use std::io::Write;
-                    self.0.write(b"!").unwrap();
-                    Poll::Ready(Ok(()))
-                }
-
-                fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-                    self.poll_flush(cx)
-                }
+            fn poll_flush(mut self: Pin<&mut Self>, _: &mut Context) -> Poll<Result<(), io::Error>> {
+                use std::io::Write;
+                self.0.write(b"!").unwrap();
+                Poll::Ready(Ok(()))
             }
 
-            let underlying = MarkWriteAndFlush(vec![]);
-            let mut wtr =
-                AsyncWriterBuilder::new().buffer_capacity(4).create_writer(underlying);
+            fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
+                self.poll_flush(cx)
+            }
+        }
 
-            wtr.write_byte_record(&ByteRecord::from(vec!["a", "b"])).await.unwrap();
-            wtr.write_byte_record(&ByteRecord::from(vec!["c", "d"])).await.unwrap();
-            wtr.flush().await.unwrap();
-            wtr.write_byte_record(&ByteRecord::from(vec!["e", "f"])).await.unwrap();
+        let underlying = MarkWriteAndFlush(vec![]);
+        let mut wtr =
+            AsyncWriterBuilder::new().buffer_capacity(4).create_writer(underlying);
 
-            let got = wtr.into_inner().await.unwrap().to_str();
+        wtr.write_byte_record(&ByteRecord::from(vec!["a", "b"])).await.unwrap();
+        wtr.write_byte_record(&ByteRecord::from(vec!["c", "d"])).await.unwrap();
+        wtr.flush().await.unwrap();
+        wtr.write_byte_record(&ByteRecord::from(vec!["e", "f"])).await.unwrap();
 
-            // As the buffer size is 4 we should write each record separately, and
-            // flush when explicitly called and implictly in into_inner.
-            assert_eq!(got, ">a,b\n<>c,d\n<!>e,f\n<!");
-        });
+        let got = wtr.into_inner().await.unwrap().to_str();
+
+        // As the buffer size is 4 we should write each record separately, and
+        // flush when explicitly called and implictly in into_inner.
+        assert_eq!(got, ">a,b\n<>c,d\n<!>e,f\n<!");
     }
 }

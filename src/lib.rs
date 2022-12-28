@@ -250,10 +250,10 @@ mod tests {
         let mut wri = crate::AsyncWriter::from_writer(
             File::create(file).await?
         );
-        wri.write_record(&["city","region","country","population"]).await?;
-        wri.write_record(&["Northbridge","MA","United States","14061"]).await?;
-        wri.write_record(&["Westborough","MA","United States","29313"]).await?;
-        wri.write_record(&["Springfield","NJ","United States","14976"]).await?;
+        wri.write_record(&["city","region","country","population","avg_age"]).await?;
+        wri.write_record(&["Northbridge","MA","United States","14061","42.5"]).await?;
+        wri.write_record(&["Westborough","MA","United States","29313", "45.1"]).await?;
+        wri.write_record(&["Springfield","NJ","United States","14976", "35.0"]).await?;
         wri.flush().await?;
         Ok(())
     }
@@ -326,6 +326,7 @@ mod tests {
                 region: String,
                 country: String,
                 population: u64,
+                avg_age: f32,
             }
             
             async fn copy_async_serde(file_in:&str, file_out:&str) -> Result<(), Box<dyn Error>> {

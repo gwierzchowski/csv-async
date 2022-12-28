@@ -1,6 +1,6 @@
 [package]
 name = "csv-async"
-version = "1.2.4"
+version = "1.2.5"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
 edition = "2021"
@@ -19,24 +19,24 @@ exclude = [".gitignore", ".github/**", "codecov.yml"]
 # default = ["with_serde", "tokio"]
 # default = ["tokio"]
 
-# This is stock default set
+# This is default set
 default = ["with_serde"]
-with_serde = ["serde", "bstr/serde1", "itoa", "ryu"]
+with_serde = ["serde", "bstr/serde", "itoa", "ryu"]
 tokio = ["tokio1", "tokio-stream"]
 
 [dependencies]
-bstr = "0.2"
+bstr = "1"
 cfg-if = "1"
 csv-core = "0.1"
 futures = "0.3"
 itoa = { version = "1", optional = true }
 ryu  = { version = "1", optional = true }
 serde = { version = "1", optional = true }
-tokio1 = { package = "tokio", version = "1.12", features = ["io-util", "fs"], optional = true }
+tokio1 = { package = "tokio", version = "1.20", features = ["io-util", "fs"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
 
 [dev-dependencies]
-async-std = "1"
+async-std = { version = "1", features = ["attributes"]}
 indoc = "1"
 serde = { version = "1", features = ["derive"] }
-tokio1 = { package = "tokio", version = "1.12", features = ["rt", "rt-multi-thread"] }
+tokio1 = { package = "tokio", version = "1.20", features = ["rt", "rt-multi-thread", "macros"] }
