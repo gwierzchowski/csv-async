@@ -4,7 +4,7 @@ version = "1.2.5"
 authors = ["gwierzchowski <gwierzchowski@wp.pl>"]
 description = "CSV parsing for async."
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.60"
 keywords = ["csv", "comma", "parser", "async"]
 categories = ["asynchronous", "encoding", "parser-implementations"]
 repository = "https://github.com/gwierzchowski/csv-async"
@@ -37,6 +37,6 @@ tokio-stream = { version = "0.1", optional = true }
 
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"]}
-indoc = "1"
+indoc = "2"
 serde = { version = "1", features = ["derive"] }
 tokio1 = { package = "tokio", version = "1.20", features = ["rt", "rt-multi-thread", "macros"] }

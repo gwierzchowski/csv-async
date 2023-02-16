@@ -52,9 +52,9 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-csv-async = "1.1"
+csv-async = "1.2"
 # or
-# csv-async = {version = "1.1", features = ["tokio"]}
+# csv-async = {version = "1.2", features = ["tokio"]}
 ```
 
 # Examples
@@ -452,6 +452,7 @@ cfg_if::cfg_if! {
 if #[cfg(feature = "with_serde")] {
     mod deserializer;
     mod serializer;
+    pub use deserializer::{DeserializeError, DeserializeErrorKind};
 }}
 
 mod async_readers;

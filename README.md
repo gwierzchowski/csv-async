@@ -3,7 +3,7 @@
 [![](https://img.shields.io/crates/d/csv-async.svg)](https://crates.io/crates/csv-async)
 [![](https://img.shields.io/crates/dv/csv-async.svg)](https://crates.io/crates/csv-async)
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
-[![Version](https://img.shields.io/badge/rustc-1.56+-ab6000.svg)](https://blog.rust-lang.org/2021/10/21/Rust-1.56.0.html)
+[![Version](https://img.shields.io/badge/rustc-1.60+-ab6000.svg)](https://blog.rust-lang.org/2022/04/07/Rust-1.60.0.html)
 
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3ALinux)
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Windows/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3AWindows)
