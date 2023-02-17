@@ -35,13 +35,20 @@ async fn read_records_incomplete_row() {
     }
     assert_eq!(read_correctly, 6);
     assert_eq!(read_errors.len(), 1);
+    
+    // For file with unix newlines.
+    let (line, byte) = if cfg!(windows) {
+        (2, 67)
+    } else {
+        (3, 66) // correct value
+    };
     assert_eq!(
-        read_errors[0].to_string().as_str(), 
-        "CSV error: record 2 (line: 3, byte: 66): found record with 2 fields, but the previous record has 4 fields"
+        read_errors[0].to_string(), 
+        format!("CSV error: record 2 (line: {line}, byte: {byte}): found record with 2 fields, but the previous record has 4 fields")
     );
     assert_eq!(
-        custom_error_message(&read_errors[0]).as_str(), 
-        "Unequal lengths: position = Some(Position { byte: 66, line: 3, record: 2 }), expected_len = 4, len = 2"
+        custom_error_message(&read_errors[0]), 
+        format!("Unequal lengths: position = Some(Position {{ byte: {byte}, line: {line}, record: 2 }}), expected_len = 4, len = 2")
     );
 }
 
