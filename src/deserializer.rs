@@ -699,7 +699,7 @@ impl StdError for DeserializeError {
 impl fmt::Display for DeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(field) = self.field {
-            write!(f, "field {}: {}", field, self.kind)
+            write!(f, "field {}: {}", field + 1, self.kind)
         } else {
             write!(f, "{}", self.kind)
         }

@@ -159,25 +159,23 @@ impl fmt::Display for Error {
         match *self.0 {
             ErrorKind::Io(ref err) => err.fmt(f),
             ErrorKind::Utf8 { pos: None, ref err } => {
-                write!(f, "CSV parse error: field {}: {}", err.field(), err)
+                write!(f, "CSV parse error: field {}: {err}", err.field() + 1)
             }
             ErrorKind::Utf8 { pos: Some(ref pos), ref err } => write!(
                 f,
                 "CSV parse error: record {} \
-                 (line {}, field: {}, byte: {}): {}",
+                 (line {}, field: {}, byte: {}): {err}",
                 pos.record(),
                 pos.line(),
-                err.field(),
+                err.field() + 1,
                 pos.byte(),
-                err
             ),
             ErrorKind::UnequalLengths { pos: None, expected_len, len } => {
                 write!(
                     f,
                     "CSV error: \
-                     found record with {} fields, but the previous record \
-                     has {} fields",
-                    len, expected_len
+                     found record with {len} fields, but the previous record \
+                     has {expected_len} fields"
                 )
             }
             ErrorKind::UnequalLengths {
@@ -187,13 +185,11 @@ impl fmt::Display for Error {
             } => write!(
                 f,
                 "CSV error: record {} (line: {}, byte: {}): \
-                 found record with {} fields, but the previous record \
-                 has {} fields",
+                 found record with {len} fields, but the previous record \
+                 has {expected_len} fields",
                 pos.record(),
                 pos.line(),
                 pos.byte(),
-                len,
-                expected_len
             ),
             ErrorKind::Seek => write!(
                 f,
@@ -203,11 +199,11 @@ impl fmt::Display for Error {
             ),
             #[cfg(feature = "with_serde")]
             ErrorKind::Serialize(ref msg) => {
-                write!(f, "CSV serialize error: {}", msg)
+                write!(f, "CSV serialize error: {msg}")
             }
             #[cfg(feature = "with_serde")]
             ErrorKind::Deserialize { pos: None, ref err } => {
-                write!(f, "CSV deserialize error: {}", err)
+                write!(f, "CSV deserialize error: {err}")
             }
             #[cfg(feature = "with_serde")]
             ErrorKind::Deserialize {
@@ -216,11 +212,10 @@ impl fmt::Display for Error {
             } => write!(
                 f,
                 "CSV deserialize error: record {} \
-                 (line {}, byte: {}): {}",
+                 (line {}, byte: {}): {err}",
                 pos.record(),
                 pos.line(),
                 pos.byte(),
-                err
             ),
             _ => unreachable!(),
         }
@@ -304,7 +299,7 @@ impl fmt::Display for Utf8Error {
         write!(
             f,
             "invalid utf-8: invalid UTF-8 in field {} near byte index {}",
-            self.field, self.valid_up_to
+            self.field + 1, self.valid_up_to
         )
     }
 }
