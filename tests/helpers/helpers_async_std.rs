@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 pub use async_std::test;
-use async_std::fs::File;
+pub use async_std::fs::File;
 pub use futures::stream::StreamExt;
 
 pub type Reader = csv_async::AsyncReader<File>;

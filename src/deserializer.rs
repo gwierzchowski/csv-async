@@ -355,6 +355,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
         self.infer_deserialize(visitor)
+            .map_err(|err| self.error(err.kind))
     }
 
     fn deserialize_bool<V: Visitor<'de>>(
@@ -425,6 +426,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
         self.next_field().and_then(|f| visitor.visit_borrowed_str(f))
+            .map_err(|err| self.error(err.kind))
     }
 
     fn deserialize_string<V: Visitor<'de>>(
@@ -432,6 +434,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
         self.next_field().and_then(|f| visitor.visit_str(f.into()))
+            .map_err(|err| self.error(err.kind))
     }
 
     fn deserialize_bytes<V: Visitor<'de>>(
@@ -439,6 +442,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
         self.next_field_bytes().and_then(|f| visitor.visit_borrowed_bytes(f))
+            .map_err(|err| self.error(err.kind))
     }
 
     fn deserialize_byte_buf<V: Visitor<'de>>(
@@ -447,6 +451,7 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> Deserializer<'de>
     ) -> Result<V::Value, Self::Error> {
         self.next_field_bytes()
             .and_then(|f| visitor.visit_byte_buf(f.to_vec()))
+            .map_err(|err| self.error(err.kind))
     }
 
     fn deserialize_option<V: Visitor<'de>>(
@@ -658,14 +663,16 @@ impl<'a, 'de: 'a, T: DeRecord<'de>> MapAccess<'de>
 /// An Serde deserialization error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeserializeError {
+    /// Zero based field number at which error occured (if available)
     field: Option<u64>,
+    /// Error kind
     kind: DeserializeErrorKind,
 }
 
 /// The type of a Serde deserialization error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeserializeErrorKind {
-    /// A generic Serde deserialization error.
+    /// A generic or external crate Serde deserialization error.
     Message(String),
     /// A generic Serde unsupported error.
     Unsupported(String),

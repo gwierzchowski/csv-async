@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 pub use tokio1 as tokio;
 pub use tokio::test;
-use tokio::fs::File;
+pub use tokio::fs::File;
 pub use tokio_stream::StreamExt;
 
 pub type Reader = csv_async::AsyncReader<File>;
