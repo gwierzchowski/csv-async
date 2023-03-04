@@ -152,7 +152,7 @@ async fn read_serde_invalid_date_time() {
 
     // For file with unix newlines.
     let (line, byte) = if cfg!(windows) {
-        (3, 82)
+        (3, 84)
     } else {
         (4, 82) // correct value
     };
@@ -167,7 +167,7 @@ async fn read_serde_invalid_date_time() {
     
     // For file with unix newlines.
     let (line, byte) = if cfg!(windows) {
-        (4, 88)
+        (4, 90)
     } else {
         (5, 88) // correct value
     };
