@@ -282,11 +282,11 @@ pub fn new_utf8_error(field: usize, valid_up_to: usize) -> Utf8Error {
 }
 
 impl Utf8Error {
-    /// The field index of a byte record in which UTF-8 validation failed.
+    /// The field index (zero based) of a byte record in which UTF-8 validation failed.
     pub fn field(&self) -> usize {
         self.field
     }
-    /// The index into the given field up to which valid UTF-8 was verified.
+    /// The index (zero based) into the given field up to which valid UTF-8 was verified.
     pub fn valid_up_to(&self) -> usize {
         self.valid_up_to
     }

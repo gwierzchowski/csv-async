@@ -118,3 +118,65 @@ async fn read_serde_non_int() {
         format!("Deserialize error: position = Some(Position {{ byte: {byte}, line: {line}, record: 3 }}), field = Some(3): Error parsing integer: invalid digit found in string")
     );
 }
+
+#[derive(Deserialize)]
+struct DateRow {
+    field_1: chrono::NaiveDateTime,
+    field_2: i32,
+}
+
+#[helpers::test]
+async fn read_serde_invalid_date_time() {
+    let des = csv_async::AsyncReaderBuilder::new()
+        .comment(Some(b'#'))
+        .create_deserializer(
+            File::open("tests/data/invalid_date_time.csv").await
+                .expect("Data file found")
+        );
+    let mut read_correctly = 0;
+    let mut read_errors = Vec::new();
+    let mut records = des.into_deserialize::<DateRow>();
+    while let Some(record) = records.next().await {
+        match record {
+            Ok(rec) => {
+                let expected_dt = chrono::NaiveDate::from_ymd_opt(2016, 7, 8).unwrap().and_hms_opt(9, 10, 11).unwrap();
+                assert_eq!(rec.field_1, expected_dt);
+                assert_eq!(rec.field_2, 2);
+                read_correctly += 1;
+            }
+            Err(e) => read_errors.push(e)
+        }
+    }
+    assert_eq!(read_correctly, 1);
+    assert_eq!(read_errors.len(), 2);
+
+    // For file with unix newlines.
+    let (line, byte) = if cfg!(windows) {
+        (3, 82)
+    } else {
+        (4, 82) // correct value
+    };
+    assert_eq!(
+        read_errors[0].to_string().as_str(), 
+        format!("CSV deserialize error: record 2 (line {line}, byte: {byte}): field 1: input contains invalid characters")
+    );
+    assert_eq!(custom_error_message(
+        &read_errors[0]).as_str(), 
+        format!("Deserialize error: position = Some(Position {{ byte: {byte}, line: {line}, record: 2 }}), field = Some(0): input contains invalid characters")
+    );
+    
+    // For file with unix newlines.
+    let (line, byte) = if cfg!(windows) {
+        (4, 88)
+    } else {
+        (5, 88) // correct value
+    };
+    assert_eq!(
+        read_errors[1].to_string().as_str(), 
+        format!("CSV deserialize error: record 3 (line {line}, byte: {byte}): field 1: input is out of range")
+    );
+    assert_eq!(custom_error_message(
+        &read_errors[1]).as_str(), 
+        format!("Deserialize error: position = Some(Position {{ byte: {byte}, line: {line}, record: 3 }}), field = Some(0): input is out of range")
+    );
+}
