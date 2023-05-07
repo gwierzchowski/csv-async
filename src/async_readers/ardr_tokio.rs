@@ -1280,6 +1280,11 @@ mod tests {
         assert_eq!(pos.byte(), 6);
         assert_eq!(pos.line(), 2);
         assert_eq!(pos.record(), 1);
+
+        // Test that we are at end of stream, and properly signal this.
+        assert!(rdr.next().await.is_none());
+        // Testing that we are not panic, trying to pass over end of stream (Issue#22)
+        assert!(rdr.next().await.is_none());
     }
 
     // Test that position info is reported correctly with headers.

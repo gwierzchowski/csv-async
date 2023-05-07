@@ -1105,19 +1105,21 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Self::Item>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut = Some(Pin::from(Box::new(
-                        read_record_borrowed(rdr, rec),
-                    )));
-                } else {
-                    self.fut = None;
+        if let Some(fut) = self.fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, rec)) => {
+                    if result.is_some() {
+                        self.fut =
+                            Some(Pin::from(Box::new(read_record_borrowed(rdr, rec))));
+                    } else {
+                        self.fut = None;
+                    }
+                    Poll::Ready(result)
                 }
-
-                Poll::Ready(result)
+                Poll::Pending => Poll::Pending,
             }
-            Poll::Pending => Poll::Pending,
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1185,18 +1187,22 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Self::Item>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut =
-                        Some(Pin::from(Box::new(read_record(rdr, rec))));
-                } else {
-                    self.fut = None;
-                }
+        if let Some(fut) = self.fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, rec)) => {
+                    if result.is_some() {
+                        self.fut =
+                            Some(Pin::from(Box::new(read_record(rdr, rec))));
+                    } else {
+                        self.fut = None;
+                    }
 
-                Poll::Ready(result)
+                    Poll::Ready(result)
+                }
+                Poll::Pending => Poll::Pending,
             }
-            Poll::Pending => Poll::Pending,
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1267,19 +1273,21 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Self::Item>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut = Some(Pin::from(Box::new(
-                        read_byte_record_borrowed(rdr, rec),
-                    )));
-                } else {
-                    self.fut = None;
+        if let Some(fut) = self.fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, rec)) => {
+                    if result.is_some() {
+                        self.fut =
+                            Some(Pin::from(Box::new(read_byte_record_borrowed(rdr, rec))));
+                    } else {
+                        self.fut = None;
+                    }
+                    Poll::Ready(result)
                 }
-
-                Poll::Ready(result)
+                Poll::Pending => Poll::Pending,
             }
-            Poll::Pending => Poll::Pending,
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1347,18 +1355,21 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Self::Item>> {
-        match self.fut.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Ready((result, rdr, rec)) => {
-                if result.is_some() {
-                    self.fut =
-                        Some(Pin::from(Box::new(read_byte_record(rdr, rec))));
-                } else {
-                    self.fut = None;
+        if let Some(fut) = self.fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, rec)) => {
+                    if result.is_some() {
+                        self.fut =
+                            Some(Pin::from(Box::new(read_byte_record(rdr, rec))));
+                    } else {
+                        self.fut = None;
+                    }
+                    Poll::Ready(result)
                 }
-
-                Poll::Ready(result)
+                Poll::Pending => Poll::Pending,
             }
-            Poll::Pending => Poll::Pending,
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1476,18 +1487,22 @@ where
                 Poll::Pending => Poll::Pending,
             }
         } else {
-            match self.rec_fut.as_mut().unwrap().as_mut().poll(cx) {
-                Poll::Ready((result, rdr, headers, rec)) => {
-                    if result.is_some() {
-                        self.rec_fut = Some(Pin::from(Box::new(
-                            deserialize_record_borrowed(rdr, headers, rec),
-                        )));
-                    } else {
-                        self.rec_fut = None;
+            if let Some(fut) = self.rec_fut.as_mut() {
+                match fut.as_mut().poll(cx) {
+                    Poll::Ready((result, rdr, headers, rec)) => {
+                        if result.is_some() {
+                            self.rec_fut = Some(Pin::from(Box::new(
+                                deserialize_record_borrowed(rdr, headers, rec),
+                            )));
+                        } else {
+                            self.rec_fut = None;
+                        }
+                        Poll::Ready(result)
                     }
-                    Poll::Ready(result)
+                    Poll::Pending => Poll::Pending,
                 }
-                Poll::Pending => Poll::Pending,
+            } else {
+                Poll::Ready(None)
             }
         }
     }
@@ -1606,19 +1621,23 @@ where
                 Poll::Pending => Poll::Pending,
             }
         } else {
-            match self.rec_fut.as_mut().unwrap().as_mut().poll(cx) {
-                Poll::Ready((result, pos, rdr, headers, rec)) => {
-                    if let Some(result) = result {
-                        self.rec_fut = Some(Pin::from(Box::new(
-                            deserialize_record_with_pos_borrowed(rdr, headers, rec),
-                        )));
-                        Poll::Ready(Some((result, pos)))
-                    } else {
-                        self.rec_fut = None;
-                        Poll::Ready(None)
+            if let Some(fut) = self.rec_fut.as_mut() {
+                match fut.as_mut().poll(cx) {
+                    Poll::Ready((result, pos, rdr, headers, rec)) => {
+                        if let Some(result) = result {
+                            self.rec_fut = Some(Pin::from(Box::new(
+                                deserialize_record_with_pos_borrowed(rdr, headers, rec),
+                            )));
+                            Poll::Ready(Some((result, pos)))
+                        } else {
+                            self.rec_fut = None;
+                            Poll::Ready(None)
+                        }
                     }
+                    Poll::Pending => Poll::Pending,
                 }
-                Poll::Pending => Poll::Pending,
+            } else {
+                Poll::Ready(None)
             }
         }
     }
@@ -1734,18 +1753,22 @@ where
                 Poll::Pending => Poll::Pending,
             }
         } else {
-            match self.rec_fut.as_mut().unwrap().as_mut().poll(cx) {
-                Poll::Ready((result, rdr, headers, rec)) => {
-                    if result.is_some() {
-                        self.rec_fut = Some(Pin::from(Box::new(
-                            deserialize_record(rdr, headers, rec),
-                        )));
-                    } else {
-                        self.rec_fut = None;
+            if let Some(fut) = self.rec_fut.as_mut() {
+                match fut.as_mut().poll(cx) {
+                    Poll::Ready((result, rdr, headers, rec)) => {
+                        if result.is_some() {
+                            self.rec_fut = Some(Pin::from(Box::new(
+                                deserialize_record(rdr, headers, rec),
+                            )));
+                        } else {
+                            self.rec_fut = None;
+                        }
+                        Poll::Ready(result)
                     }
-                    Poll::Ready(result)
+                    Poll::Pending => Poll::Pending,
                 }
-                Poll::Pending => Poll::Pending,
+            } else {
+                Poll::Ready(None)
             }
         }
     }
@@ -1864,19 +1887,23 @@ where
                 Poll::Pending => Poll::Pending,
             }
         } else {
-            match self.rec_fut.as_mut().unwrap().as_mut().poll(cx) {
-                Poll::Ready((result, pos, rdr, headers, rec)) => {
-                    if let Some(result) = result {
-                        self.rec_fut = Some(Pin::from(Box::new(
-                            deserialize_record_with_pos(rdr, headers, rec),
-                        )));
-                        Poll::Ready(Some((result, pos)))
-                    } else {
-                        self.rec_fut = None;
-                        Poll::Ready(None)
+            if let Some(fut) = self.rec_fut.as_mut() {
+                match fut.as_mut().poll(cx) {
+                    Poll::Ready((result, pos, rdr, headers, rec)) => {
+                        if let Some(result) = result {
+                            self.rec_fut = Some(Pin::from(Box::new(
+                                deserialize_record_with_pos(rdr, headers, rec),
+                            )));
+                            Poll::Ready(Some((result, pos)))
+                        } else {
+                            self.rec_fut = None;
+                            Poll::Ready(None)
+                        }
                     }
+                    Poll::Pending => Poll::Pending,
                 }
-                Poll::Pending => Poll::Pending,
+            } else {
+                Poll::Ready(None)
             }
         }
     }
