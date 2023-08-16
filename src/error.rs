@@ -59,6 +59,7 @@ impl Error {
 
 /// The specific type of an error.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ErrorKind {
     /// An I/O error that occurred while reading CSV data.
     Io(io::Error),
@@ -100,14 +101,7 @@ pub enum ErrorKind {
         pos: Option<Position>,
         /// The deserialization error.
         err: DeserializeError,
-    },
-    /// Hints that destructuring should not be exhaustive.
-    ///
-    /// This enum may grow additional variants, so this makes sure clients
-    /// don't count on exhaustive matching. (Otherwise, adding a new variant
-    /// could break existing code.)
-    #[doc(hidden)]
-    __Nonexhaustive,
+    }
 }
 
 impl ErrorKind {
@@ -148,8 +142,7 @@ impl StdError for Error {
             #[cfg(feature = "with_serde")]
             ErrorKind::Serialize { .. } => None,
             #[cfg(feature = "with_serde")]
-            ErrorKind::Deserialize{ ref err, .. } => Some(err),
-            _ => unreachable!(),
+            ErrorKind::Deserialize{ ref err, .. } => Some(err)
         }
     }
 }
@@ -216,8 +209,7 @@ impl fmt::Display for Error {
                 pos.record(),
                 pos.line(),
                 pos.byte(),
-            ),
-            _ => unreachable!(),
+            )
         }
     }
 }

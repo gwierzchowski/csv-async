@@ -508,6 +508,7 @@ pub use crate::async_writers::aser_tokio::AsyncSerializer;
 
 /// The quoting style to use when writing CSV data.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum QuoteStyle {
     /// This puts quotes around every field. Always.
     Always,
@@ -524,14 +525,7 @@ pub enum QuoteStyle {
     /// quotes will be used even if they aren't strictly necessary.
     NonNumeric,
     /// This *never* writes quotes, even if it would produce invalid CSV data.
-    Never,
-    /// Hints that destructuring should not be exhaustive.
-    ///
-    /// This enum may grow additional variants, so this makes sure clients
-    /// don't count on exhaustive matching. (Otherwise, adding a new variant
-    /// could break existing code.)
-    #[doc(hidden)]
-    __Nonexhaustive,
+    Never
 }
 
 impl QuoteStyle {
@@ -541,8 +535,7 @@ impl QuoteStyle {
             QuoteStyle::Always => csv_core::QuoteStyle::Always,
             QuoteStyle::Necessary => csv_core::QuoteStyle::Necessary,
             QuoteStyle::NonNumeric => csv_core::QuoteStyle::NonNumeric,
-            QuoteStyle::Never => csv_core::QuoteStyle::Never,
-            _ => unreachable!(),
+            QuoteStyle::Never => csv_core::QuoteStyle::Never
         }
     }
 }
@@ -558,18 +551,12 @@ impl Default for QuoteStyle {
 /// Use this to specify the record terminator while parsing CSV. The default is
 /// CRLF, which treats `\r`, `\n` or `\r\n` as a single record terminator.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum Terminator {
     /// Parses `\r`, `\n` or `\r\n` as a single record terminator.
     CRLF,
     /// Parses the byte given as a record terminator.
-    Any(u8),
-    /// Hints that destructuring should not be exhaustive.
-    ///
-    /// This enum may grow additional variants, so this makes sure clients
-    /// don't count on exhaustive matching. (Otherwise, adding a new variant
-    /// could break existing code.)
-    #[doc(hidden)]
-    __Nonexhaustive,
+    Any(u8)
 }
 
 impl Terminator {
@@ -577,8 +564,7 @@ impl Terminator {
     fn to_core(self) -> csv_core::Terminator {
         match self {
             Terminator::CRLF => csv_core::Terminator::CRLF,
-            Terminator::Any(b) => csv_core::Terminator::Any(b),
-            _ => unreachable!(),
+            Terminator::Any(b) => csv_core::Terminator::Any(b)
         }
     }
 }
@@ -591,6 +577,7 @@ impl Default for Terminator {
 
 /// The whitespace preservation behavior when reading CSV data.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Trim {
     /// Preserves fields and headers. This is the default.
     None,
@@ -599,14 +586,7 @@ pub enum Trim {
     /// Trim whitespace from fields, but not headers.
     Fields,
     /// Trim whitespace from fields and headers.
-    All,
-    /// Hints that destructuring should not be exhaustive.
-    ///
-    /// This enum may grow additional variants, so this makes sure clients
-    /// don't count on exhaustive matching. (Otherwise, adding a new variant
-    /// could break existing code.)
-    #[doc(hidden)]
-    __Nonexhaustive,
+    All
 }
 
 impl Trim {
