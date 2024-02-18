@@ -438,6 +438,34 @@ impl AsyncWriterBuilder {
         self
     }
 
+    /// Use this when you are going to set comment for reader used to read saved file.
+    ///
+    /// If `quote_style` is set to `QuoteStyle::Necessary`, a field will
+    /// be quoted if the comment character is detected anywhere in the field.
+    ///
+    /// The default value is None.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::error::Error;
+    /// use csv_async::AsyncWriterBuilder;
+    ///
+    /// # fn main() { async_std::task::block_on(async {example().await.unwrap()}); }
+    /// async fn example() -> Result<(), Box<dyn Error>> {
+    ///     let mut wtr =
+    ///         AsyncWriterBuilder::new().comment(Some(b'#')).create_writer(Vec::new());
+    ///     wtr.write_record(&["# comment", "another"]).await?;
+    ///     let buf = wtr.into_inner().await?;
+    ///     assert_eq!(String::from_utf8(buf).unwrap(), "\"# comment\",another\n");
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn comment(&mut self, comment: Option<u8>) -> &mut AsyncWriterBuilder {
+        self.builder.comment(comment);
+        self
+    }
+
     /// Set the capacity (in bytes) of the internal buffer used in the CSV
     /// writer. This defaults to a reasonable setting.
     pub fn buffer_capacity(&mut self, capacity: usize) -> &mut AsyncWriterBuilder {

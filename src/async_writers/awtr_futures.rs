@@ -35,7 +35,7 @@ impl AsyncWriterBuilder {
     }
 }
 
-/// A already configured CSV writer.
+/// An already configured CSV writer.
 ///
 /// A CSV writer takes as input Rust values and writes those values in a valid
 /// CSV format as output.

@@ -4,8 +4,6 @@ use std::iter::FromIterator;
 use std::ops::{self, Range};
 use std::result;
 
-use bstr::{BString, ByteSlice};
-
 #[cfg(feature = "with_serde")]
 use serde::de::Deserialize;
 
@@ -73,11 +71,12 @@ impl<'a, T: AsRef<[u8]>> PartialEq<[T]> for &'a ByteRecord {
 
 impl fmt::Debug for ByteRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut fields = vec![];
-        for field in self {
-            fields.push(BString::from(field.to_vec()));
-        }
-        write!(f, "ByteRecord({:?})", fields)
+        write!(f, "ByteRecord(")?;
+        f.debug_list()
+            .entries(self.iter().map(crate::debug::Bytes))
+            .finish()?;
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
@@ -297,8 +296,8 @@ impl ByteRecord {
         let mut trimmed =
             ByteRecord::with_capacity(self.as_slice().len(), self.len());
         trimmed.set_position(self.position().cloned());
-        for field in &*self {
-            trimmed.push_field(field.trim());
+        for field in self.iter() {
+            trimmed.push_field(trim_ascii(field));
         }
         *self = trimmed;
     }
@@ -462,7 +461,7 @@ impl ByteRecord {
         // Otherwise, we must check each field individually to ensure that
         // it's valid UTF-8.
         for (i, field) in self.iter().enumerate() {
-            if let Err(err) = field.to_str() {
+            if let Err(err) = std::str::from_utf8(field) {
                 return Err(new_utf8_error(i, err.valid_up_to()));
             }
         }
@@ -602,7 +601,7 @@ impl Position {
     /// Returns a new position initialized to the start value.
     #[inline]
     pub fn new() -> Position {
-        Position { byte: 0, line: 1, record: 0 }
+        Position::default()
     }
 
     /// The byte offset, starting at `0`, of this position.
@@ -643,6 +642,12 @@ impl Position {
     pub fn set_record(&mut self, record: u64) -> &mut Position {
         self.record = record;
         self
+    }
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Position { byte: 0, line: 1, record: 0 }
     }
 }
 
@@ -688,7 +693,7 @@ impl Bounds {
             None => 0,
             Some(&start) => start,
         };
-        Some(ops::Range { start: start, end: end })
+        Some(ops::Range { start, end })
     }
 
     /// Returns a slice of ending positions of all fields.
@@ -702,7 +707,7 @@ impl Bounds {
     /// If there are no fields, this returns `0`.
     #[inline]
     fn end(&self) -> usize {
-        self.ends().last().map(|&i| i).unwrap_or(0)
+        self.ends().last().copied().unwrap_or(0)
     }
 
     /// Returns the number of fields in these bounds.
@@ -857,6 +862,32 @@ impl<'r> DoubleEndedIterator for ByteRecordIter<'r> {
             Some(&self.r.0.fields[start..end])
         }
     }
+}
+
+fn trim_ascii(bytes: &[u8]) -> &[u8] {
+    trim_ascii_start(trim_ascii_end(bytes))
+}
+
+fn trim_ascii_start(mut bytes: &[u8]) -> &[u8] {
+    while let [first, rest @ ..] = bytes {
+        if first.is_ascii_whitespace() {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes
+}
+
+fn trim_ascii_end(mut bytes: &[u8]) -> &[u8] {
+    while let [rest @ .., last] = bytes {
+        if last.is_ascii_whitespace() {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes
 }
 
 #[cfg(test)]

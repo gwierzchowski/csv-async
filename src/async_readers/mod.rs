@@ -12,8 +12,8 @@ if #[cfg(feature = "tokio")] {
     use futures::stream::Stream;
 }}
 
-use csv_core::{ReaderBuilder as CoreReaderBuilder};
-use csv_core::{Reader as CoreReader};
+use csv_core::ReaderBuilder as CoreReaderBuilder;
+use csv_core::Reader as CoreReader;
 #[cfg(feature = "with_serde")]
 use serde::de::DeserializeOwned;
 
@@ -67,7 +67,7 @@ impl Default for AsyncReaderBuilder {
             has_headers: true,
             trim: Trim::default(),
             end_on_io_error: true,
-            builder: Box::new(CoreReaderBuilder::default()),
+            builder: Box::<CoreReaderBuilder>::default(),
         }
     }
 }
@@ -1042,10 +1042,10 @@ impl<R: io::AsyncRead + io::AsyncSeek + Unpin> AsyncReaderImpl<R> {
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 
-async fn read_record_borrowed<'r, R>(
-    rdr: &'r mut AsyncReaderImpl<R>,
+async fn read_record_borrowed<R>(
+    rdr: &mut AsyncReaderImpl<R>,
     mut rec: StringRecord,
-) -> (Option<Result<StringRecord>>, &'r mut AsyncReaderImpl<R>, StringRecord)
+) -> (Option<Result<StringRecord>>, &mut AsyncReaderImpl<R>, StringRecord)
 where
     R: io::AsyncRead + Unpin
 {
@@ -1062,6 +1062,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying
 /// CSV `Reader`.
+#[allow(clippy::type_complexity)]
 pub struct StringRecordsStream<'r, R>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1144,6 +1145,7 @@ where
 }
 
 /// An owned stream of records as strings.
+#[allow(clippy::type_complexity)]
 pub struct StringRecordsIntoStream<'r, R>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1210,10 +1212,10 @@ where
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 
-async fn read_byte_record_borrowed<'r, R>(
-    rdr: &'r mut AsyncReaderImpl<R>,
+async fn read_byte_record_borrowed<R>(
+    rdr: &mut AsyncReaderImpl<R>,
     mut rec: ByteRecord,
-) -> (Option<Result<ByteRecord>>, &'r mut AsyncReaderImpl<R>, ByteRecord)
+) -> (Option<Result<ByteRecord>>, &mut AsyncReaderImpl<R>, ByteRecord)
 where
     R: io::AsyncRead + Unpin,
 {
@@ -1230,6 +1232,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying
 /// CSV `Reader`.
+#[allow(clippy::type_complexity)]
 pub struct ByteRecordsStream<'r, R>
 where
     R: io::AsyncRead + Unpin + Send,
@@ -1312,6 +1315,7 @@ where
 }
 
 /// An owned stream of records as raw bytes.
+#[allow(clippy::type_complexity)]
 pub struct ByteRecordsIntoStream<'r, R>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1380,11 +1384,11 @@ where
 cfg_if::cfg_if! {
 if #[cfg(feature = "with_serde")] {
 
-async fn deserialize_record_borrowed<'r, R, D: DeserializeOwned>(
-    rdr: &'r mut AsyncReaderImpl<R>,
+async fn deserialize_record_borrowed<R, D: DeserializeOwned>(
+    rdr: &mut AsyncReaderImpl<R>,
     headers: Option<StringRecord>,
     mut rec: StringRecord,
-) -> (Option<Result<D>>, &'r mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
+) -> (Option<Result<D>>, &mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
     R: io::AsyncRead + Unpin
 {
@@ -1401,6 +1405,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying CSV `Reader`.
 /// type, and `D` refers to the type that this stream will deserialize a record into.
+#[allow(clippy::type_complexity)]
 pub struct DeserializeRecordsStream<'r, R, D>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1442,7 +1447,7 @@ where
         if has_headers {
             Self {
                 header_fut: Some(Pin::from(Box::new(
-                    async{ (rdr.headers().await.and_then(|h| Ok(h.clone())), rdr) }
+                    async{ (rdr.headers().await.cloned(), rdr) }
                 ))),
                 rec_fut: None,
             }
@@ -1474,7 +1479,7 @@ where
                     self.rec_fut = Some(Pin::from(Box::new(
                         deserialize_record_borrowed(rdr, Some(headers), StringRecord::new()),
                     )));
-                    cx.waker().clone().wake();
+                    cx.waker().wake_by_ref();
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
@@ -1486,24 +1491,22 @@ where
                 },
                 Poll::Pending => Poll::Pending,
             }
-        } else {
-            if let Some(fut) = self.rec_fut.as_mut() {
-                match fut.as_mut().poll(cx) {
-                    Poll::Ready((result, rdr, headers, rec)) => {
-                        if result.is_some() {
-                            self.rec_fut = Some(Pin::from(Box::new(
-                                deserialize_record_borrowed(rdr, headers, rec),
-                            )));
-                        } else {
-                            self.rec_fut = None;
-                        }
-                        Poll::Ready(result)
+        } else if let Some(fut) = self.rec_fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, headers, rec)) => {
+                    if result.is_some() {
+                        self.rec_fut = Some(Pin::from(Box::new(
+                            deserialize_record_borrowed(rdr, headers, rec),
+                        )));
+                    } else {
+                        self.rec_fut = None;
                     }
-                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(result)
                 }
-            } else {
-                Poll::Ready(None)
+                Poll::Pending => Poll::Pending,
             }
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1511,11 +1514,11 @@ where
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 //-//////////////////////////////////////////////////////////////////////////////////////////////
 
-async fn deserialize_record_with_pos_borrowed<'r, R, D: DeserializeOwned>(
-    rdr: &'r mut AsyncReaderImpl<R>,
+async fn deserialize_record_with_pos_borrowed<R, D: DeserializeOwned>(
+    rdr: &mut AsyncReaderImpl<R>,
     headers: Option<StringRecord>,
     mut rec: StringRecord,
-) -> (Option<Result<D>>, Position, &'r mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
+) -> (Option<Result<D>>, Position, &mut AsyncReaderImpl<R>, Option<StringRecord>, StringRecord)
 where
     R: io::AsyncRead + Unpin
 {
@@ -1533,6 +1536,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying CSV `Reader`.
 /// type, and `D` refers to the type that this stream will deserialize a record into.
+#[allow(clippy::type_complexity)]
 pub struct DeserializeRecordsStreamPos<'r, R, D>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1575,7 +1579,7 @@ where
         if has_headers {
             Self {
                 header_fut: Some(Pin::from(Box::new(
-                    async{ (rdr.headers().await.and_then(|h| Ok(h.clone())), rdr) }
+                    async{ (rdr.headers().await.cloned(), rdr) }
                 ))),
                 rec_fut: None,
             }
@@ -1607,7 +1611,7 @@ where
                     self.rec_fut = Some(Pin::from(Box::new(
                         deserialize_record_with_pos_borrowed(rdr, Some(headers), StringRecord::new()),
                     )));
-                    cx.waker().clone().wake();
+                    cx.waker().wake_by_ref();
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
@@ -1620,25 +1624,23 @@ where
                 },
                 Poll::Pending => Poll::Pending,
             }
-        } else {
-            if let Some(fut) = self.rec_fut.as_mut() {
-                match fut.as_mut().poll(cx) {
-                    Poll::Ready((result, pos, rdr, headers, rec)) => {
-                        if let Some(result) = result {
-                            self.rec_fut = Some(Pin::from(Box::new(
-                                deserialize_record_with_pos_borrowed(rdr, headers, rec),
-                            )));
-                            Poll::Ready(Some((result, pos)))
-                        } else {
-                            self.rec_fut = None;
-                            Poll::Ready(None)
-                        }
+        } else if let Some(fut) = self.rec_fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, pos, rdr, headers, rec)) => {
+                    if let Some(result) = result {
+                        self.rec_fut = Some(Pin::from(Box::new(
+                            deserialize_record_with_pos_borrowed(rdr, headers, rec),
+                        )));
+                        Poll::Ready(Some((result, pos)))
+                    } else {
+                        self.rec_fut = None;
+                        Poll::Ready(None)
                     }
-                    Poll::Pending => Poll::Pending,
                 }
-            } else {
-                Poll::Ready(None)
+                Poll::Pending => Poll::Pending,
             }
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1667,6 +1669,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying CSV `Reader`.
 /// type, and `D` refers to the type that this stream will deserialize a record into.
+#[allow(clippy::type_complexity)]
 pub struct DeserializeRecordsIntoStream<'r, R, D>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1708,7 +1711,7 @@ where
         if has_headers {
             Self {
                 header_fut: Some(Pin::from(Box::new(
-                    async{ (rdr.headers().await.and_then(|h| Ok(h.clone())), rdr) }
+                    async{ (rdr.headers().await.cloned(), rdr) }
                 ))),
                 rec_fut: None,
             }
@@ -1740,7 +1743,7 @@ where
                     self.rec_fut = Some(Pin::from(Box::new(
                         deserialize_record(rdr, Some(headers), StringRecord::new()),
                     )));
-                    cx.waker().clone().wake();
+                    cx.waker().wake_by_ref();
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
@@ -1752,24 +1755,22 @@ where
                 },
                 Poll::Pending => Poll::Pending,
             }
-        } else {
-            if let Some(fut) = self.rec_fut.as_mut() {
-                match fut.as_mut().poll(cx) {
-                    Poll::Ready((result, rdr, headers, rec)) => {
-                        if result.is_some() {
-                            self.rec_fut = Some(Pin::from(Box::new(
-                                deserialize_record(rdr, headers, rec),
-                            )));
-                        } else {
-                            self.rec_fut = None;
-                        }
-                        Poll::Ready(result)
+        } else if let Some(fut) = self.rec_fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, rdr, headers, rec)) => {
+                    if result.is_some() {
+                        self.rec_fut = Some(Pin::from(Box::new(
+                            deserialize_record(rdr, headers, rec),
+                        )));
+                    } else {
+                        self.rec_fut = None;
                     }
-                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(result)
                 }
-            } else {
-                Poll::Ready(None)
+                Poll::Pending => Poll::Pending,
             }
+        } else {
+            Poll::Ready(None)
         }
     }
 }
@@ -1799,6 +1800,7 @@ where
 ///
 /// The lifetime parameter `'r` refers to the lifetime of the underlying CSV `Reader`.
 /// type, and `D` refers to the type that this stream will deserialize a record into.
+#[allow(clippy::type_complexity)]
 pub struct DeserializeRecordsIntoStreamPos<'r, R, D>
 where
     R: io::AsyncRead + Unpin + Send
@@ -1841,7 +1843,7 @@ where
         if has_headers {
             Self {
                 header_fut: Some(Pin::from(Box::new(
-                    async{ (rdr.headers().await.and_then(|h| Ok(h.clone())), rdr) }
+                    async{ (rdr.headers().await.cloned(), rdr) }
                 ))),
                 rec_fut: None,
             }
@@ -1873,7 +1875,7 @@ where
                     self.rec_fut = Some(Pin::from(Box::new(
                         deserialize_record_with_pos(rdr, Some(headers), StringRecord::new()),
                     )));
-                    cx.waker().clone().wake();
+                    cx.waker().wake_by_ref();
                     Poll::Pending
                 },
                 Poll::Ready((Err(err), rdr)) => {
@@ -1886,25 +1888,23 @@ where
                 },
                 Poll::Pending => Poll::Pending,
             }
-        } else {
-            if let Some(fut) = self.rec_fut.as_mut() {
-                match fut.as_mut().poll(cx) {
-                    Poll::Ready((result, pos, rdr, headers, rec)) => {
-                        if let Some(result) = result {
-                            self.rec_fut = Some(Pin::from(Box::new(
-                                deserialize_record_with_pos(rdr, headers, rec),
-                            )));
-                            Poll::Ready(Some((result, pos)))
-                        } else {
-                            self.rec_fut = None;
-                            Poll::Ready(None)
-                        }
+        } else if let Some(fut) = self.rec_fut.as_mut() {
+            match fut.as_mut().poll(cx) {
+                Poll::Ready((result, pos, rdr, headers, rec)) => {
+                    if let Some(result) = result {
+                        self.rec_fut = Some(Pin::from(Box::new(
+                            deserialize_record_with_pos(rdr, headers, rec),
+                        )));
+                        Poll::Ready(Some((result, pos)))
+                    } else {
+                        self.rec_fut = None;
+                        Poll::Ready(None)
                     }
-                    Poll::Pending => Poll::Pending,
                 }
-            } else {
-                Poll::Ready(None)
+                Poll::Pending => Poll::Pending,
             }
+        } else {
+            Poll::Ready(None)
         }
     }
 }

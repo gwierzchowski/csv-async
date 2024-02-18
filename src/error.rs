@@ -42,10 +42,7 @@ impl Error {
     /// If this is true, the underlying `ErrorKind` is guaranteed to be
     /// `ErrorKind::Io`.
     pub fn is_io_error(&self) -> bool {
-        match *self.0 {
-            ErrorKind::Io(_) => true,
-            _ => false,
-        }
+        matches!(*self.0, ErrorKind::Io(_))
     }
 
     /// Return the position for this error, if one exists.
@@ -132,22 +129,10 @@ impl From<Error> for io::Error {
     }
 }
 
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match *self.0 {
-            ErrorKind::Io(ref err) => Some(err),
-            ErrorKind::Utf8 { ref err, .. } => Some(err),
-            ErrorKind::UnequalLengths { .. } => None,
-            ErrorKind::Seek => None,
-            #[cfg(feature = "with_serde")]
-            ErrorKind::Serialize { .. } => None,
-            #[cfg(feature = "with_serde")]
-            ErrorKind::Deserialize{ ref err, .. } => Some(err)
-        }
-    }
-}
+impl StdError for Error {}
 
 impl fmt::Display for Error {
+    #[allow(unreachable_patterns)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self.0 {
             ErrorKind::Io(ref err) => err.fmt(f),
@@ -209,7 +194,8 @@ impl fmt::Display for Error {
                 pos.record(),
                 pos.line(),
                 pos.byte(),
-            )
+            ),
+            _ => write!(f,"CSV other error")
         }
     }
 }
@@ -226,8 +212,8 @@ pub struct FromUtf8Error {
 
 impl FromUtf8Error {
     /// Create a new FromUtf8Error.
-    pub(crate) fn new(rec: ByteRecord, err: Utf8Error) -> FromUtf8Error {
-        FromUtf8Error { record: rec, err: err }
+    pub(crate) fn new(record: ByteRecord, err: Utf8Error) -> FromUtf8Error {
+        FromUtf8Error { record, err }
     }
 
     /// Access the underlying `ByteRecord` that failed UTF-8 validation.
@@ -270,7 +256,7 @@ pub struct Utf8Error {
 
 /// Create a new UTF-8 error.
 pub fn new_utf8_error(field: usize, valid_up_to: usize) -> Utf8Error {
-    Utf8Error { field: field, valid_up_to: valid_up_to }
+    Utf8Error { field, valid_up_to }
 }
 
 impl Utf8Error {
@@ -315,19 +301,19 @@ impl<W> IntoInnerError<W> {
     /// crate.)
     #[allow(dead_code)]
     pub(crate) fn new(wtr: W, err: io::Error) -> IntoInnerError<W> {
-        IntoInnerError { wtr: wtr, err: err }
+        IntoInnerError { wtr, err }
     }
 
-    /// Returns reference to the error which caused the call to `into_inner` to fail.
+    /// Returns reference to the i/o error which caused the failure.
     ///
-    /// This error was returned when attempting to flush the internal buffer.
+    /// This error was returned when attempting to flush the writer internal buffer.
     pub fn error(&self) -> &io::Error {
         &self.err
     }
 
-    /// Returns the error which caused the call to `into_inner` to fail.
+    /// Returns the i/o error which caused the failure.
     ///
-    /// This error was returned when attempting to flush the internal buffer.
+    /// This error was returned when attempting to flush the writer internal buffer.
     pub fn into_error(self) -> io::Error {
         self.err
     }
@@ -341,11 +327,7 @@ impl<W> IntoInnerError<W> {
     }
 }
 
-impl<W: std::any::Any> StdError for IntoInnerError<W> {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.err.source()
-    }
-}
+impl<W: std::any::Any> StdError for IntoInnerError<W> {}
 
 impl<W> fmt::Display for IntoInnerError<W> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

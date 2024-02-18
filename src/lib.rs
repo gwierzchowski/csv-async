@@ -48,14 +48,7 @@ position information, configuration knobs or iterator types.
 
 # Setup
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-csv-async = "1.2"
-# or
-# csv-async = {version = "1.2", features = ["tokio"]}
-```
+In root folder for your project run `cargo add csv-async` or `cargo add --features tokio csv-async` to add this crate to your projext.
 
 # Examples
 
@@ -445,6 +438,7 @@ mod tests {
 }
 
 mod byte_record;
+mod debug;
 mod error;
 mod string_record;
 
@@ -525,11 +519,11 @@ pub enum QuoteStyle {
     /// quotes will be used even if they aren't strictly necessary.
     NonNumeric,
     /// This *never* writes quotes, even if it would produce invalid CSV data.
-    Never
+    Never,
 }
 
 impl QuoteStyle {
-    #[allow(dead_code)]
+    #[allow(unreachable_patterns)]
     fn to_core(self) -> csv_core::QuoteStyle {
         match self {
             QuoteStyle::Always => csv_core::QuoteStyle::Always,
@@ -556,12 +550,13 @@ pub enum Terminator {
     /// Parses `\r`, `\n` or `\r\n` as a single record terminator.
     CRLF,
     /// Parses the byte given as a record terminator.
-    Any(u8)
+    Any(u8),
 }
 
 impl Terminator {
     /// Convert this to the csv_core type of the same name.
-    fn to_core(self) -> csv_core::Terminator {
+   #[allow(unreachable_patterns)]
+   fn to_core(self) -> csv_core::Terminator {
         match self {
             Terminator::CRLF => csv_core::Terminator::CRLF,
             Terminator::Any(b) => csv_core::Terminator::Any(b)
@@ -586,7 +581,7 @@ pub enum Trim {
     /// Trim whitespace from fields, but not headers.
     Fields,
     /// Trim whitespace from fields and headers.
-    All
+    All,
 }
 
 impl Trim {

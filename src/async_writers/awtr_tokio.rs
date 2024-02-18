@@ -35,7 +35,7 @@ impl AsyncWriterBuilder {
     }
 }
 
-/// A already configured CSV writer for `tokio` runtime.
+/// An already configured CSV writer for `tokio` runtime.
 ///
 /// A CSV writer takes as input Rust values and writes those values in a valid
 /// CSV format as output.

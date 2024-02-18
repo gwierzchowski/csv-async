@@ -43,7 +43,7 @@ impl AsyncWriterBuilder {
     }
 }
 
-/// A already configured CSV `serde` serializer for `tokio` runtime.
+/// An already configured CSV `serde` serializer for `tokio` runtime.
 ///
 /// A CSV serializer takes as input Rust structures that implement `serde::Serialize` trait
 /// and writes those data in a valid CSV output.
@@ -264,7 +264,7 @@ impl<W: AsyncWrite + Unpin> AsyncSerializer<W> {
     /// ## Non-Struct Containers
     ///
     /// Nested containers are flattened to their scalar components, with the
-    /// exeption of a few types that are not allowed:
+    /// exception of a few types that are not allowed:
     ///
     /// | Name | Example Type | Example Value | Output |
     /// | ---- | ---- | ---- | ---- |

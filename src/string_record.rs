@@ -647,7 +647,7 @@ impl StringRecord {
         match (read_res, utf8_res) {
             (Err(err), _) => Err(err),
             (Ok(_), Err(err)) => {
-                Err(Error::new(ErrorKind::Utf8 { pos: Some(pos), err: err }))
+                Err(Error::new(ErrorKind::Utf8 { pos: Some(pos), err }))
             }
             (Ok(eof), Ok(())) => Ok(eof),
         }
@@ -665,7 +665,7 @@ impl ops::Index<usize> for StringRecord {
 impl<T: AsRef<str>> From<Vec<T>> for StringRecord {
     #[inline]
     fn from(xs: Vec<T>) -> StringRecord {
-        StringRecord::from_iter(xs.into_iter())
+        StringRecord::from_iter(xs)
     }
 }
 

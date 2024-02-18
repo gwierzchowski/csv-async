@@ -1,8 +1,6 @@
 use std::fmt;
 use std::mem;
 
-use itoa;
-use ryu;
 use serde::ser::{
     Error as SerdeError, Serialize, SerializeMap, SerializeSeq,
     SerializeStruct, SerializeStructVariant, SerializeTuple,
@@ -15,8 +13,8 @@ use crate::async_writers::mwtr_serde::MemWriter;
 
 /// Serialize the given value to the given writer, and return an error if
 /// anything went wrong.
-pub fn serialize<'w, S: Serialize>(
-    wtr: &'w mut MemWriter,
+pub fn serialize<S: Serialize>(
+    wtr: &mut MemWriter,
     value: S,
 ) -> Result<(), Error> {
     value.serialize(&mut SeRecord { wtr })
@@ -120,7 +118,7 @@ impl<'a, 'w> Serializer for &'a mut SeRecord<'w> {
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.wtr.write_field(&[])
+        self.wtr.write_field([])
     }
 
     fn serialize_some<T: ?Sized + Serialize>(
@@ -451,7 +449,7 @@ struct SeHeader<'w> {
 
 impl<'w> SeHeader<'w> {
     fn new(wtr: &'w mut MemWriter) -> Self {
-        SeHeader { wtr: wtr, state: HeaderState::Write }
+        SeHeader { wtr, state: HeaderState::Write }
     }
 
     fn wrote_header(&self) -> bool {

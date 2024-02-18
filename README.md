@@ -3,7 +3,7 @@
 [![](https://img.shields.io/crates/d/csv-async.svg)](https://crates.io/crates/csv-async)
 [![](https://img.shields.io/crates/dv/csv-async.svg)](https://crates.io/crates/csv-async)
 [![Documentation](https://docs.rs/csv-async/badge.svg)](https://docs.rs/csv-async)
-[![Version](https://img.shields.io/badge/rustc-1.60+-ab6000.svg)](https://blog.rust-lang.org/2022/04/07/Rust-1.60.0.html)
+[![Version](https://img.shields.io/badge/rustc-1.61+-ab6000.svg)](https://blog.rust-lang.org/2022/05/19/Rust-1.61.0.html)
 
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Linux/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3ALinux)
 [![build status](https://github.com/gwierzchowski/csv-async/workflows/Windows/badge.svg?branch=master&event=push)](https://github.com/gwierzchowski/csv-async/actions?query=workflow%3AWindows)
@@ -13,7 +13,7 @@
 This is CSV library to use in asynchronous environment.
 Implemented API is similar to existing [csv](https://github.com/BurntSushi/rust-csv) crate with few exceptions like builder's `create_` functions instead of `from_` as in `csv`.
 
-Some code is borrowed from `csv` crate (synchronized with version 1.1.6 - Mar 2021).
+Some code is borrowed from `csv` crate (synchronized with version 1.3.3 - Oct 2023).
 This package shares CSV parsing routines with `csv` by means of using `csv-core` crate.
 Major version of this crate will be kept in sync with major version of `csv` with which it is API compatible.
 
@@ -31,7 +31,7 @@ Features which can be enabled / disabled during library build.
 | `tokio`      | off     | Enables crate to be used with [tokio](https://tokio.rs) runtime and libraries |
 
 Enabling `tokio` feature allows user to use `tokio::fs::File` and makes `AsyncReader` (`AsyncWriter`) 
-to be based on `tokio::io::AsyncRead` (`tokio::io::AsyncWrite`). Currently this crate depends on tokio version 1.20.
+to be based on `tokio::io::AsyncRead` (`tokio::io::AsyncWrite`). Currently this crate depends on tokio version 1.25.
 
 Without `tokio` feature, this crate depends only on `futures` crate and reader (writer) are based on traits `futures::io::AsyncRead` (`futures::io::AsyncWrite`), what allows user to use `async_std::fs::File`.
 

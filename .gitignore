@@ -11,3 +11,6 @@ Cargo.lock
 
 # IDE
 .vscode/**
+
+# Tests generated files
+/examples/*
